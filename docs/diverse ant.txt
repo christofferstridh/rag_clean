@@ -1,0 +1,32 @@
+starta postgres:
+sudo service postgresql start
+
+det var ngt med gpun o cuda o pytorch, tror jag behövde nedgradera pyton senast o ladda ner allt igen i ny venv
+    men nu verkar det funka direkt, tror jag körde 3.14 förra gången också men kanske inte
+
+gjode om så att jag inte laddar ngt alls från huggingface, allt förväntas finnas nedladdat i ollama
+
+körde pipreqs . för att skapa en requirements.txt o sen pip install -r requirements.txt
+det funkade inte helt, fick bygga om en del själv, behövde även installera postgres source för att dess psy lib som connectar ska kunna byggas från source  
+
+bytte mistral till annat eftersom att den var för tung, bytte till qwen och deepseek - ska testa båda - de ska även fatta svenska
+modelllistan är nu 
+ollama list
+NAME                                           ID              SIZE      MODIFIED       
+qwen2.5:3b                                     357c53fb659c    1.9 GB    14 minutes ago    
+deepseek-r1:1.5b                               e0979632db5a    1.1 GB    18 minutes ago    
+phi4-mini:latest                               78fad5d182a7    2.5 GB    24 hours ago      
+mistral:7b-instruct-q4_K_M                     1a85656b534f    4.4 GB    26 hours ago      
+ryanshillington/Qwen3-Embedding-0.6B:latest    2092cdece376    1.2 GB    26 hours ago    
+
+MEN om jag ska embedda svensk text så måste jag ha en embeddingmodel som kan svenska, gemini rekommnderar:
+Top Embedding Models for English and Swedish:
+BAAI/bge-m3: This is the absolute best choice for your needs. It supports over 100 languages, has exceptional performance on Swedish text, and requires less than 3GB of VRAM in standard precision.
+intfloat/multilingual-e5-base: This is a highly efficient, lightweight alternative. It maps English and Swedish meanings into the same vector space flawlessly and uses under 1.5GB of VRAM, leaving plenty of room for your system.
+
+testar bge-m3 genom ollama pull bge-m3 (kom ihåg att ollama registry ofta har sina kortnamn, så enklast att surfa in på deras library o söka)
+
+hmm, trodde inte att mina mätningar stämde, ffa VRAM max av mina 8GB (ja, det är INTE 6GB), ca 1300MB max, men det bekräftas faktiskt av nvidia-smi.exe dmon i cmd i win
+
+populate verkar ta ca 2h att köra
+

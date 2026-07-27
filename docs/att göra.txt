@@ -1,0 +1,24 @@
+RAG
+
+	byta till bge-m3:latest som embeddings och köra om populate
+
+	förstå och rensa o refaktorisera
+		flytta ut i nytt repo och plocka bort det jag inte använder
+		förstå allt och sen refaktorisera utan genererande ai-hjälp, bara fråga på specifika frågor, men helst bara läsa docs istället
+			
+	automatiserade tester
+
+	optimera
+		run
+		populate
+
+	få in som egna tabeller i embeddings
+		icbt
+		mct
+
+	
+	se om jag kan köra den som app i min telefon
+		går det att splitta ut så att flera appar använder samma chat-modell?
+		använda termux?
+
+	gör klart kursen
