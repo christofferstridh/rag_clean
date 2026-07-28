@@ -1,0 +1,50 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Python: lint (ruff)",
+      "type": "shell",
+      "command": "/home/stoffe/stoffe_rag_py3.14/bin/python -m ruff check .",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Python: test (pytest)",
+      "type": "shell",
+      "command": "/home/stoffe/stoffe_rag_py3.14/bin/python -m pytest",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "test",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Python: quality check",
+      "type": "shell",
+      "command": "/home/stoffe/stoffe_rag_py3.14/bin/python -m ruff check . && /home/stoffe/stoffe_rag_py3.14/bin/python -m pytest --cov=src/main --cov-report=term-missing",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ]
+}

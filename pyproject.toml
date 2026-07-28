@@ -1,0 +1,12 @@
+[tool.pytest.ini_options]
+testpaths = ["src/test"]
+pythonpath = [".", "src"]
+addopts = "--cov=src/main --cov-report=term-missing"
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+extend-exclude = ["src/main/all_articles"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F"]

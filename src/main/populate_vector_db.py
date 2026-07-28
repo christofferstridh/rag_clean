@@ -1,16 +1,15 @@
 import os
-from pydoc import doc
 import sys
+import time
+
+import fitz  # från pymupdf
+import ollama
 import pytesseract
 from config import Config
-import ollama
-from nltk.tokenize import sent_tokenize
 from database_connect_embeddings import get_psql_session, TextEmbedding
-from sentence_transformers import SentenceTransformer
-import fitz # från pymupdf
-import pytesseract
-from pdf2image import convert_from_path
+from nltk.tokenize import sent_tokenize
 from PIL import Image
+
 
 # Istället för SentenceTransformer, skapar vi en enkel funktion/klass
 class OllamaEmbeddingWrapper:
@@ -25,7 +24,7 @@ class OllamaEmbeddingWrapper:
         embeddings = []
         for sentence in sentences:
             response = ollama.embeddings(model=self.model_name, prompt=sentence)
-            embeddings.append(response['embedding'])
+            embeddings.append(response["embedding"])
 
         return embeddings
 
@@ -33,21 +32,21 @@ class OllamaEmbeddingWrapper:
 def populate_vector_db(folder_path):
     session = get_psql_session()
     TextEmbedding.truncate(session)
-    session.commit
-    #model = SentenceTransformer(Config.EMBEDDING_MODEL_NAME, device="cuda")
+    session.commit()
+    # model = SentenceTransformer(Config.EMBEDDING_MODEL_NAME, device="cuda")
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
     files = os.listdir(folder_path)
     total = len(files)
 
     for index, file_name in enumerate(files, start=1):
         try:
-            if file_name.endswith('.txt'):
+            if file_name.endswith(".txt"):
                 file_path = os.path.join(folder_path, file_name)
-                with open(file_path, 'r', encoding='utf-8') as f:
+                with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
                     save_vector(session, model, file_name, content)
 
-            if file_name.endswith('.pdf'):
+            if file_name.endswith(".pdf"):
                 file_path = os.path.join(folder_path, file_name)
                 with fitz.open(file_path) as f:
                     content = ""
@@ -74,28 +73,26 @@ def populate_vector_db(folder_path):
 def save_vector(session, model, file_name, content):
     sentences = sent_tokenize(content)
 
-                    #embeddings = embed(model='nomic-embed-text', input=sentences)['embeddings']
+    # embeddings = embed(model='nomic-embed-text', input=sentences)['embeddings']
     embeddings = model.encode(sentences)
     for i, (embedding, sentence) in enumerate(zip(embeddings, sentences)):
-        new_embedding = TextEmbedding(embedding=embedding, content=sentence, file_name=file_name, sentence_number=i+1)
-        session.add(new_embedding)    
+        new_embedding = TextEmbedding(
+            embedding=embedding, content=sentence, file_name=file_name, sentence_number=i + 1
+        )
+        session.add(new_embedding)
     session.commit()
     print(f"Inserted embeddings for {file_name} into the database.")
 
-import time
 
-if __name__=="__main__":
-
+if __name__ == "__main__":
     start_time = time.perf_counter()
 
     folderpath = "all_articles"
-    
+
     if len(sys.argv) > 1:
         folderpath = sys.argv[1]
-    
 
-    populate_vector_db("./"+folderpath)
-    
+    populate_vector_db("./" + folderpath)
+
     elapsed_time = time.perf_counter() - start_time
     print(f"⏱️  Tid förfluten:         {elapsed_time:.4f} sekunder")
-    
