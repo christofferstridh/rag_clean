@@ -269,7 +269,12 @@ Question:
         # model='mistral:7b-instruct-q4_K_M',
         model=Config.REASONING_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
-        stream=False,  # ska vara mer lightweight,
+        stream=False,
+        options={
+            "temperature": 0.0,
+            "top_p": 1.0,
+            "num_predict": 256,
+        },
         # extra_body={"chat_template_kwargs" : {"enable_thinking": False}} # tror det bara är för qwen 3.5 - nej, funkar inte: got an unexpected keyword argument 'extra_body
     )
 

@@ -16,8 +16,8 @@ def search_embeddings(query_embedding, session, limit=5):
             TextEmbedding.file_name,
             distance_expr.label("distance"),
         )
-        .order_by(distance_expr)
+        .order_by(distance_expr, TextEmbedding.id)
         .limit(limit)
         .all()
-    )  # <-- Ändrat här
+    )
     return results
