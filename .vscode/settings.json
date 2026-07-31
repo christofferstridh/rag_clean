@@ -6,6 +6,12 @@
   "python.analysis.typeCheckingMode": "basic",
   "ruff.nativeServer": "on",
   "ruff.importStrategy": "fromEnvironment",
+  "coverage-gutters.showLineCoverage": false,
+  "coverage-gutters.showRulerCoverage": false,
+  "coverage-gutters.showGutterCoverage": false,
+  "coverage-gutters.coverageFileNames": ["coverage.xml", ".coverage"],
+  "coverage-gutters.highlightTarget": "none",
+  "coverage-gutters.enabled": false,
   "[python]": {
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "charliermarsh.ruff"
