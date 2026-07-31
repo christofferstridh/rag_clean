@@ -4,19 +4,22 @@ from pgvector.sqlalchemy import Vector
 
 Base = declarative_base()
 
+
 def get_psql_session():
-    engine = create_engine('postgresql://postgres:postgres@localhost/text_embeddings')
+    engine = create_engine("postgresql://postgres:postgres@localhost/text_embeddings")
     Base.metadata.create_all(engine)
 
     # Create a session
     Session = sessionmaker(bind=engine)
     return Session()
 
+
 # //print("yo")
 # //print(get_psql_session())
 
+
 class TextEmbedding(Base):
-    __tablename__ = 'text_embeddings'
+    __tablename__ = "text_embeddings"
     id = Column(Integer, primary_key=True, autoincrement=True)
     embedding = Column(Vector)
     content = Column(String)
@@ -30,9 +33,3 @@ class TextEmbedding(Base):
     def truncate(cls, session):
         session.execute(text(f"TRUNCATE TABLE {cls.__tablename__} RESTART IDENTITY CASCADE"))
         session.commit()
-
-def insert_embeddings(embeddings, contents, file_names, session):
-    for embedding, content, file_name in zip(embeddings, contents, file_names):
-        new_embedding = TextEmbedding(embedding=embedding, content=content, file_name=file_name)
-        session.add(new_embedding)
-    session.commit()

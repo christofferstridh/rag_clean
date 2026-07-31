@@ -5,10 +5,15 @@ import time
 import fitz  # från pymupdf
 import ollama
 import pytesseract
-from config import Config
-from database_connect_embeddings import get_psql_session, TextEmbedding
 from nltk.tokenize import sent_tokenize
 from PIL import Image
+
+try:
+    from .config import Config
+    from .database_connect_embeddings import get_psql_session, TextEmbedding
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import Config
+    from database_connect_embeddings import get_psql_session, TextEmbedding
 
 
 # Istället för SentenceTransformer, skapar vi en enkel funktion/klass
@@ -16,7 +21,7 @@ class OllamaEmbeddingWrapper:
     def __init__(self, model_name):
         self.model_name = model_name
 
-    def encode(self, sentences, **kwargs):
+    def encode(self, sentences):
         # Om det är en singel sträng, gör om till lista
         if isinstance(sentences, str):
             sentences = [sentences]

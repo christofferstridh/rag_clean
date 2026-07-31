@@ -9,10 +9,16 @@ import time
 
 from ollama import chat
 
-from config import Config
-from database_connect_embeddings import TextEmbedding, get_psql_session
-from populate_vector_db import OllamaEmbeddingWrapper
-from retrieve_vector_data import search_embeddings
+try:
+    from .config import Config
+    from .database_connect_embeddings import TextEmbedding, get_psql_session
+    from .populate_vector_db import OllamaEmbeddingWrapper
+    from .retrieve_vector_data import search_embeddings
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import Config
+    from database_connect_embeddings import TextEmbedding, get_psql_session
+    from populate_vector_db import OllamaEmbeddingWrapper
+    from retrieve_vector_data import search_embeddings
 
 
 def is_unique_to_window(existing_matches, current_match, group_window_size=5):
@@ -40,8 +46,7 @@ def get_filtered_matches(search_results):
             break
         if is_unique_to_window(matches, result):
             unique_count += 1
-
-        matches.append(result)
+            matches.append(result)
 
     return matches
 
@@ -53,17 +58,18 @@ def group_entries(entry_ids, file_names, index_of_interest, group_window_size):
     # If it needs no grouping, return an array with just its index (will be handled as in get_surrounding_sentences)
     # If it needs grouping with one or more entries, return array of indices of those entries.
 
-    entry_id_of_interest = entry_ids[index_of_interest]
     file_name_of_interest = file_names[index_of_interest]
 
     group_idxs = [index_of_interest]
 
-    for idx, (entry_id, file_name) in enumerate(zip(entry_ids, file_names)):
-        if file_name != file_name_of_interest:
+    for idx, file_name in enumerate(file_names):
+        if idx == index_of_interest:
             continue
-        if (entry_id >= entry_id_of_interest - group_window_size) and (
-            entry_id <= entry_id_of_interest + group_window_size
-        ):
+
+        is_nearby_by_position = abs(idx - index_of_interest) <= group_window_size
+        is_same_file = file_name == file_name_of_interest
+
+        if is_nearby_by_position or is_same_file:
             group_idxs.append(idx)
 
     return group_idxs
@@ -251,7 +257,7 @@ You are a retrieval-augmented assistant.
 Answer in the same language as the question.
 
 Use ONLY the context below to answer the question.
-If the answer is not in the context, say "I don't know."
+If the answer is not in the context, say that you don't know.
 
 Context:
 {context}
