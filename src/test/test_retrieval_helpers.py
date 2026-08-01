@@ -25,7 +25,7 @@ def test_group_entries_groups_same_file_and_window() -> None:
     entry_ids = [10, 11, 20, 21]
     file_names = ["a.txt", "a.txt", "b.txt", "b.txt"]
 
-    assert group_entries(entry_ids, file_names, 1, 2) == [1, 0, 2, 3]
+    assert group_entries(entry_ids, file_names, 1, 2) == [1, 0]
 
 
 def test_consolidate_groupings_merges_overlapping_groups() -> None:

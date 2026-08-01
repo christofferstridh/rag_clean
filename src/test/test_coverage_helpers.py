@@ -247,7 +247,8 @@ def test_search_by_query_uses_embedding_and_search_helpers(monkeypatch):
 
     result = run.search_by_query("hello", num_matches=1, group_window_size=1)
 
-    assert result == ["surrounding"]
+    assert result["surrounding_sentences"] == ["surrounding"]
+    assert result["filtered_matches"] == [(10, 1, "content", "file")]
     assert calls["limit"] == 3
     assert calls["query_embedding"] == [0.1, 0.2]
 
