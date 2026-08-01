@@ -9,6 +9,9 @@ import time
 
 from ollama import chat
 
+# för miniLm
+# from sentence_transformers import SentenceTransformer
+
 try:
     from .config import Config
     from .database_connect_embeddings import TextEmbedding, get_psql_session
@@ -69,7 +72,7 @@ def group_entries(entry_ids, file_names, index_of_interest, group_window_size):
         is_nearby_by_position = abs(idx - index_of_interest) <= group_window_size
         is_same_file = file_name == file_name_of_interest
 
-        if is_nearby_by_position or is_same_file:
+        if is_nearby_by_position and is_same_file:
             group_idxs.append(idx)
 
     return group_idxs
@@ -151,9 +154,21 @@ def get_surrounding_sentences(entry_ids, file_names, group_window_size, session)
 def search_by_query(query, num_matches=5, group_window_size=5):
 
     session = get_psql_session()
-    # model = SentenceTransformer(Config.EMBEDDING_MODEL_NAME, device='cuda')
+
+    # bge-m3
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
-    query_embedding = model.encode(query)[0]
+
+    # miniLM
+    # model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+
+    # bge-m3
+    query_embedding = model.encode(query)
+    if (
+        isinstance(query_embedding, list)
+        and query_embedding
+        and isinstance(query_embedding[0], (list, tuple))
+    ):
+        query_embedding = query_embedding[0]
 
     del model
     gc.collect()
@@ -164,20 +179,37 @@ def search_by_query(query, num_matches=5, group_window_size=5):
     # keep_alive=0
     # )
 
+    debug_data = {
+        "query_embedding_length": len(query_embedding),
+        "query_embedding_sample": query_embedding[:5],
+    }
     search_results = search_embeddings(
         query_embedding, session=session, limit=num_matches * (2 * group_window_size + 1)
     )
+    debug_data["search_results"] = search_results
     filtered_matches = get_filtered_matches(search_results)
+    debug_data["filtered_matches"] = filtered_matches
 
     entry_ids = [i[0] for i in filtered_matches]
     file_names = [i[3] for i in filtered_matches]
 
-    return get_surrounding_sentences(
+    surrounding = get_surrounding_sentences(
         entry_ids=entry_ids,
         file_names=file_names,
         group_window_size=group_window_size,
         session=session,
     )
+    debug_data["surrounding_sentences"] = surrounding
+
+    with open("search_debug.txt", "w", encoding="utf-8") as debug_file:
+        debug_file.write("DEBUG SEARCH OUTPUT\n")
+        for key, value in debug_data.items():
+            debug_file.write(f"{key}: {value}\n")
+
+    return {
+        "surrounding_sentences": surrounding,
+        "filtered_matches": filtered_matches,
+    }
 
 
 class WSLGPUMonitor(threading.Thread):
@@ -237,14 +269,35 @@ if __name__ == "__main__":
 
     # Force embeddings to CPU
     os.environ["OLLAMA_NUM_GPU"] = "0"
-    context = search_by_query(query)
+    context_response = search_by_query(query)
     # reset to use GPU for reasoning model
-    os.environ["OLLAMA_NUM_GPU"] = "1"
+    os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
+
+    selected_group_count = None
+    selected_scores = []
+    if isinstance(context_response, dict):
+        context = context_response.get("surrounding_sentences", [])
+        filtered_matches = context_response.get("filtered_matches", [])
+
+        top_scores = [row[-1] for row in filtered_matches if len(row) > 4]
+        selected_scores = top_scores[:5]
+        if len(top_scores) >= 1 and max(top_scores[:2]) < 0.5:
+            context = context[:1]
+        else:
+            context = context[: min(5, len(context))]
+        selected_group_count = len(context)
+    else:
+        context = context_response
+
+    if isinstance(context, list):
+        context_text = "\n".join(row[2] for group in context for row in group if len(row) > 2)
+    else:
+        context_text = str(context)
 
     # print (f"query: {query}")
-    # print (f"context: {context}")
+    # print (f"context: {context_text}")
 
-    # prompt = f"<|content_start>{context}<|content_end> {query}"
+    # prompt = f"<|content_start>{context_text}<|content_end> {query}"
     # response = chat(model='phi4-mini_4096ctx', messages=[
     # {
     #     'role': 'user',
@@ -260,21 +313,39 @@ Use ONLY the context below to answer the question.
 If the answer is not in the context, say that you don't know.
 
 Context:
-{context}
+{context_text}
 
 Question:
 {query}
 """
+
+    with open("prompt_debug.txt", "w", encoding="utf-8") as prompt_file:
+        prompt_file.write("PROMPT DEBUG OUTPUT\n")
+        if selected_group_count is not None:
+            prompt_file.write(f"selected_group_count: {selected_group_count}\n")
+            prompt_file.write(f"selected_scores: {selected_scores}\n")
+        prompt_file.write(f"context_text length: {len(context_text)}\n")
+        prompt_file.write("--- CONTEXT_TEXT START ---\n")
+        prompt_file.write(context_text)
+        prompt_file.write("\n--- CONTEXT_TEXT END ---\n")
+        prompt_file.write(f"question: {query}\n")
+
+    options = Config.OLLAMA_REASONING_OPTIONS or {}
+    options = {
+        "temperature": 0.0,
+        "top_p": 1.0,
+        "num_predict": Config.OLLAMA_NUM_PREDICT,
+        "num_ctx": Config.OLLAMA_CONTEXT_SIZE,
+        **options,
+    }
+
     response = chat(
         # model='mistral:7b-instruct-q4_K_M',
         model=Config.REASONING_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         stream=False,
-        options={
-            "temperature": 0.0,
-            "top_p": 1.0,
-            "num_predict": 256,
-        },
+        options=options,
+        keep_alive=Config.OLLAMA_KEEP_ALIVE,
         # extra_body={"chat_template_kwargs" : {"enable_thinking": False}} # tror det bara är för qwen 3.5 - nej, funkar inte: got an unexpected keyword argument 'extra_body
     )
 

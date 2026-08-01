@@ -8,6 +8,9 @@ import pytesseract
 from nltk.tokenize import sent_tokenize
 from PIL import Image
 
+# för MiniLM
+# from sentence_transformers import SentenceTransformer
+
 try:
     from .config import Config
     from .database_connect_embeddings import get_psql_session, TextEmbedding
@@ -26,10 +29,45 @@ class OllamaEmbeddingWrapper:
         if isinstance(sentences, str):
             sentences = [sentences]
 
-        embeddings = []
-        for sentence in sentences:
-            response = ollama.embeddings(model=self.model_name, prompt=sentence)
-            embeddings.append(response["embedding"])
+        options = Config.OLLAMA_EMBEDDING_OPTIONS or {}
+
+        def _call(func, **kwargs):
+            try:
+                return func(**kwargs)
+            except TypeError:
+                minimal_kwargs = {
+                    k: v for k, v in kwargs.items() if k in {"model", "prompt", "input"}
+                }
+                return func(**minimal_kwargs)
+
+        if hasattr(ollama, "embed"):
+            response = _call(
+                ollama.embed,
+                model=self.model_name,
+                input=sentences,
+                options=options,
+                keep_alive=Config.OLLAMA_KEEP_ALIVE,
+            )
+        elif hasattr(ollama, "embeddings"):
+            prompt = sentences[0] if isinstance(sentences, list) else sentences
+            response = _call(
+                ollama.embeddings,
+                model=self.model_name,
+                prompt=prompt,
+                options=options,
+                keep_alive=Config.OLLAMA_KEEP_ALIVE,
+            )
+        else:
+            raise AttributeError("ollama client has no embed or embeddings method")
+
+        embeddings = response.get("embeddings", response.get("embedding"))
+        if embeddings is None:
+            raise ValueError("No embedding returned from Ollama")
+
+        if len(sentences) == 1 and embeddings and isinstance(embeddings[0], (int, float)):
+            embeddings = [embeddings]
+        elif embeddings and isinstance(embeddings[0], (int, float)):
+            embeddings = [embeddings] * len(sentences)
 
         return embeddings
 
@@ -38,9 +76,14 @@ def populate_vector_db(folder_path):
     session = get_psql_session()
     TextEmbedding.truncate(session)
     session.commit()
-    # model = SentenceTransformer(Config.EMBEDDING_MODEL_NAME, device="cuda")
+
+    # för miniLM
+    # model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
+
+    # för bge-m3
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
-    files = os.listdir(folder_path)
+
+    files = sorted(os.listdir(folder_path))
     total = len(files)
 
     for index, file_name in enumerate(files, start=1):
@@ -51,7 +94,7 @@ def populate_vector_db(folder_path):
                     content = f.read()
                     save_vector(session, model, file_name, content)
 
-            if file_name.endswith(".pdf"):
+            elif file_name.endswith(".pdf"):
                 file_path = os.path.join(folder_path, file_name)
                 with fitz.open(file_path) as f:
                     content = ""
@@ -59,10 +102,10 @@ def populate_vector_db(folder_path):
                         content += page.get_text() + "\n"
                     save_vector(session, model, file_name, content)
 
-            if file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
+            elif file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
                 file_path = os.path.join(folder_path, file_name)
-                img = Image.open(file_path)
-                content = pytesseract.image_to_string(img)
+                with Image.open(file_path) as img:
+                    content = pytesseract.image_to_string(img)
                 save_vector(session, model, file_name, content)
 
             print(f"Processed file {index} of {total}")
@@ -71,20 +114,26 @@ def populate_vector_db(folder_path):
             print(f"Error processing {file_name}: {str(e)}")
             continue
 
+    session.commit()
     session.close()
     return
 
 
 def save_vector(session, model, file_name, content):
     sentences = sent_tokenize(content)
+    if not sentences:
+        return
 
-    # embeddings = embed(model='nomic-embed-text', input=sentences)['embeddings']
     embeddings = model.encode(sentences)
     for i, (embedding, sentence) in enumerate(zip(embeddings, sentences)):
         new_embedding = TextEmbedding(
-            embedding=embedding, content=sentence, file_name=file_name, sentence_number=i + 1
+            embedding=embedding,
+            content=sentence,
+            file_name=file_name,
+            sentence_number=i + 1,
         )
         session.add(new_embedding)
+
     session.commit()
     print(f"Inserted embeddings for {file_name} into the database.")
 

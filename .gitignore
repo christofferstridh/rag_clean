@@ -8,3 +8,6 @@ npm-debug.log
 all_articles/
 
 __pycache__/
+
+src/main/search_debug.txt
+src/main/prompt_debug.txt
