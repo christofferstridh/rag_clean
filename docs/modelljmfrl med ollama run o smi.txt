@@ -1,0 +1,83 @@
+what is the color of the sky when you are feeling a little blue?
+	
+vad är det för färg på himlen när man känner sig lite blå?
+
+	
+mistral:7b-instruct-q4_K_M
+	startar ganska snabbt
+	en
+		fattar frågan halvt o svarar fyrkantigt
+	sv
+		svarar fyrkantigt, dålig svenska
+	toppar på %VRAM ca
+		12
+	svarar streamat ganska snabbt
+	
+qwen2.5:3b
+	startar ganska snabbt
+	en
+		fattar frågan bra och svarar lite nyanserat
+	sv
+		svarar fyrkantigt, dålig svenska
+	toppar på %VRAM ca
+		16
+	svarar streamat ganska snabbt
+		
+gemma3:12b-it-qat
+	startar jättelångsamt, flera minuter
+	en
+		10 min utan svar - oanvändbar för mig
+	
+
+qwen3.5:9b
+	startar ganska snabbt
+	en
+		
+	sv
+		
+	toppar på %VRAM ca
+		
+	svarar streamat långsamt, vet inte om det är för att den skriver ut sitt resonerande, gjorde en ny utan COT mha modelfile men det fortsätter göra samma sak! värdelöst!
+
+gemma2:9b
+	startar snabbt
+	en
+		svarar nyanserat, riktigt bra svar
+	sv
+		precis samma svar på svenska, korrekt svenska, nyanserat
+	toppar på %VRAM ca
+		7% WOW!
+		
+	MEN... det krashar från python! lyckas inte lösa det
+		
+llama3.2:3b är snabb men lite för dålig svenska
+
+phi 3 kan svenska till skillnad fr 4
+
+	medium
+		för stor, hänger nästan vid start, svarar jättelångsamt, dålig svenska 
+	mini
+		för dålig på svenska, klarar inte heller nyanser, det kanske är för att den är dålig på engelska
+		
+		
+så gemma2 eller 3 hade varit bäst om de varit stabilare mot ollama/python
+qwen3.5:9b hade funkat tror jag om man kunnat stänga av ToT
+men i dagsläget llama3.2:3b eller qwen2.5:3b med sin dåliga svenska
+
+
+hf.co/lm-kit/gemma-3-4b-instruct-gguf:Q4_K_M
+	verkar bara vilja svara på engelska trots att den förstår frågan på svenska
+
+läsa hur man stänger av ToT i qwen 3
+		JSON/API Payload: Add "chat_template_kwargs": {"enable_thinking": false} to your request data.
+		Hugging Face Transformers: Set enable_thinking=False inside your apply_chat_template function.
+		Ollama / Chat UIs: Type /no_think or /set system /no_think in the chat client, or prefill the assistant block with an empty <think>\n\n</think> tag.
+		
+testa ollama pull hf.co/AI-Sweden-Models/Llama-3-8B-instruct-Q4_K_M-gguf:Q4_K_M
+	oj, svarar nyanserat, varken snabbt eller långsamt på svenska
+	MEN - den kan bara svara på svenska, den förstår dock engelska, skumt, kanske med python
+		nej, den dör, för stort eller instabilt via python, vet inte ger upp o går tillbaka till modellväljande senare
+		
+testade llama mot qwen igen och llama var mindre dålig så jag kör på den
+
+alla jag testat verkar maxa på ca 0,9-1,3GB VRAM
