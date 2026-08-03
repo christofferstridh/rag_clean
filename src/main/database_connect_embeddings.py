@@ -33,3 +33,7 @@ class TextEmbedding(Base):
     def truncate(cls, session):
         session.execute(text(f"TRUNCATE TABLE {cls.__tablename__} RESTART IDENTITY CASCADE"))
         session.commit()
+
+    @classmethod
+    def delete_by_file_name(cls, session, file_name):
+        session.query(cls).filter(cls.file_name == file_name).delete(synchronize_session=False)

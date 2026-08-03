@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import time
@@ -72,10 +73,8 @@ class OllamaEmbeddingWrapper:
         return embeddings
 
 
-def populate_vector_db(folder_path):
+def populate_vector_db(folder_path, limit=None):
     session = get_psql_session()
-    TextEmbedding.truncate(session)
-    session.commit()
 
     # för miniLM
     # model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
@@ -84,6 +83,8 @@ def populate_vector_db(folder_path):
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
 
     files = sorted(os.listdir(folder_path))
+    if limit is not None:
+        files = files[:limit]
     total = len(files)
 
     for index, file_name in enumerate(files, start=1):
@@ -99,7 +100,11 @@ def populate_vector_db(folder_path):
                 with fitz.open(file_path) as f:
                     content = ""
                     for page in f:
-                        content += page.get_text() + "\n"
+                        page_text = page.get_text()
+                        if isinstance(page_text, str):
+                            content += page_text + "\n"
+                        else:
+                            content += str(page_text) + "\n"
                     save_vector(session, model, file_name, content)
 
             elif file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
@@ -120,6 +125,8 @@ def populate_vector_db(folder_path):
 
 
 def save_vector(session, model, file_name, content):
+    TextEmbedding.delete_by_file_name(session, file_name)
+
     sentences = sent_tokenize(content)
     if not sentences:
         return
@@ -138,15 +145,20 @@ def save_vector(session, model, file_name, content):
     print(f"Inserted embeddings for {file_name} into the database.")
 
 
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(description="Populate the vector database from source files.")
+    parser.add_argument("--folder", default="all_articles", help="Folder containing source files")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Maximum number of files to process"
+    )
+    return parser.parse_args(argv)
+
+
 if __name__ == "__main__":
     start_time = time.perf_counter()
 
-    folderpath = "all_articles"
-
-    if len(sys.argv) > 1:
-        folderpath = sys.argv[1]
-
-    populate_vector_db("./" + folderpath)
+    args = parse_args(sys.argv[1:])
+    populate_vector_db("./" + args.folder, limit=args.limit)
 
     elapsed_time = time.perf_counter() - start_time
     print(f"⏱️  Tid förfluten:         {elapsed_time:.4f} sekunder")

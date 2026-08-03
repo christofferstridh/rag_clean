@@ -68,9 +68,20 @@ class FakeSavedSession:
         self.added = []
         self.committed = False
         self.closed = False
+        self.deleted_files = []
 
     def add(self, obj):
         self.added.append(obj)
+
+    def query(self, *args, **kwargs):
+        return self
+
+    def filter(self, *args, **kwargs):
+        return self
+
+    def delete(self, synchronize_session=False):
+        self.deleted_files.append("all")
+        return 1
 
     def commit(self):
         self.committed = True
@@ -163,6 +174,43 @@ def test_save_vector_adds_embeddings_to_session():
     assert session.committed is True
 
 
+def test_save_vector_replaces_existing_embeddings_for_file():
+    class FakeQuery:
+        def __init__(self, session):
+            self.session = session
+
+        def filter(self, *args, **kwargs):
+            return self
+
+        def delete(self, synchronize_session=False):
+            self.session.deleted_count += 1
+            return 1
+
+    class FakeSessionWithReplacement:
+        def __init__(self):
+            self.added = []
+            self.deleted_count = 0
+            self.committed = False
+
+        def add(self, obj):
+            self.added.append(obj)
+
+        def query(self, *args, **kwargs):
+            return FakeQuery(self)
+
+        def commit(self):
+            self.committed = True
+
+    session = FakeSessionWithReplacement()
+    model = FakeEmbeddingModel("demo")
+
+    populate_vector_db.save_vector(session, model, "demo.txt", "First sentence. Second sentence.")
+
+    assert session.deleted_count == 1
+    assert len(session.added) == 2
+    assert session.committed is True
+
+
 def test_populate_vector_db_processes_txt_files(tmp_path, monkeypatch):
     target_file = tmp_path / "sample.txt"
     target_file.write_text("Some text", encoding="utf-8")
@@ -174,6 +222,68 @@ def test_populate_vector_db_processes_txt_files(tmp_path, monkeypatch):
     populate_vector_db.populate_vector_db(str(tmp_path))
 
     assert target_file.exists()
+
+
+def test_populate_vector_db_respects_optional_limit(tmp_path, monkeypatch):
+    (tmp_path / "first.txt").write_text("First text", encoding="utf-8")
+    (tmp_path / "second.txt").write_text("Second text", encoding="utf-8")
+    (tmp_path / "third.txt").write_text("Third text", encoding="utf-8")
+
+    processed_files = []
+
+    monkeypatch.setattr(populate_vector_db, "get_psql_session", lambda: FakeSavedSession())
+    monkeypatch.setattr(
+        populate_vector_db,
+        "save_vector",
+        lambda session, model, file_name, content: processed_files.append(file_name),
+    )
+    monkeypatch.setattr(populate_vector_db, "OllamaEmbeddingWrapper", lambda model_name: object())
+
+    populate_vector_db.populate_vector_db(str(tmp_path), limit=2)
+
+    assert processed_files == ["first.txt", "second.txt"]
+
+
+def test_populate_vector_db_processes_pdf_files(monkeypatch, tmp_path):
+    target_file = tmp_path / "sample.pdf"
+    target_file.write_bytes(b"pdf")
+
+    class FakePage:
+        def get_text(self):
+            return "page text"
+
+    class FakeDocument:
+        def __init__(self, path):
+            self.path = path
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def __iter__(self):
+            return iter([FakePage()])
+
+    calls = []
+
+    monkeypatch.setattr(populate_vector_db, "get_psql_session", lambda: FakeSavedSession())
+    monkeypatch.setattr(
+        populate_vector_db, "save_vector", lambda *args, **kwargs: calls.append(args[2])
+    )
+    monkeypatch.setattr(populate_vector_db, "OllamaEmbeddingWrapper", lambda model_name: object())
+    monkeypatch.setattr(populate_vector_db.fitz, "open", lambda path: FakeDocument(path))
+
+    populate_vector_db.populate_vector_db(str(tmp_path))
+
+    assert calls == ["sample.pdf"]
+
+
+def test_parse_args_accepts_named_arguments():
+    args = populate_vector_db.parse_args(["--folder", "demo", "--limit", "3"])
+
+    assert args.folder == "demo"
+    assert args.limit == 3
 
 
 def test_text_embedding_truncate_and_str():
