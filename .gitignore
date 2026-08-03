@@ -14,3 +14,4 @@ search_debug.txt
 prompt_debug.txt
 src/main/search_debug.txt
 src/main/prompt_debug.txt
+.coverage
