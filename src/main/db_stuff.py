@@ -33,5 +33,7 @@ class TextEmbedding(Base):
         session.commit()
 
     @classmethod
-    def delete_by_file_name(cls, session, file_name):
-        session.query(cls).filter(cls.file_name == file_name).delete(synchronize_session=False)
+    def delete_by_file_name_and_source(cls, session, file_name, source):
+        session.query(cls).filter(cls.file_name == file_name, cls.source == source).delete(
+            synchronize_session=False
+        )

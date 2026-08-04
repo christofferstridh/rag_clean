@@ -175,7 +175,9 @@ def test_save_vector_adds_embeddings_to_session():
     session = FakeSavedSession()
     model = FakeEmbeddingModel("demo")
 
-    populate_vector_db.save_vector(session, model, "demo.txt", "First sentence. Second sentence.")
+    populate_vector_db.save_vector(
+        session, model, "demo.txt", "First sentence. Second sentence.", "test_source"
+    )
 
     assert len(session.added) == 2
     assert session.added[0].content == "First sentence."
@@ -212,7 +214,9 @@ def test_save_vector_replaces_existing_embeddings_for_file():
     session = FakeSessionWithReplacement()
     model = FakeEmbeddingModel("demo")
 
-    populate_vector_db.save_vector(session, model, "demo.txt", "First sentence. Second sentence.")
+    populate_vector_db.save_vector(
+        session, model, "demo.txt", "First sentence. Second sentence.", "test_source"
+    )
 
     assert session.deleted_count == 1
     assert len(session.added) == 2

@@ -18,6 +18,8 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
     from config import Config
     from db_stuff import get_psql_session, TextEmbedding
 
+from pyprojroot import here
+
 
 # Istället för SentenceTransformer, skapar vi en enkel funktion/klass
 class OllamaEmbeddingWrapper:
@@ -74,10 +76,10 @@ class OllamaEmbeddingWrapper:
 
 def _save_vector_with_source(session, model, file_name, content, source):
     try:
-        save_vector(session, model, file_name, content, source=source)
+        save_vector(session, model, file_name, content, source)
     except TypeError as exc:
         if "unexpected keyword argument 'source'" in str(exc):
-            save_vector(session, model, file_name, content)
+            save_vector(session, model, file_name, content, source)  # fallback without keyword
         else:
             raise
 
@@ -91,7 +93,7 @@ def populate_vector_db(folder_path, limit=None):
     # för bge-m3
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
 
-    source = folder_path.split("/")[-1]  # sista mappen i sökv
+    source = folder_path.parts[-1]  # sista mappen i sökv
     files = sorted(os.listdir(folder_path))
     if limit is not None:
         files = files[:limit]
@@ -134,8 +136,10 @@ def populate_vector_db(folder_path, limit=None):
     return
 
 
-def save_vector(session, model, file_name, content, source=None):
-    TextEmbedding.delete_by_file_name(session, file_name)
+def save_vector(session, model, file_name, content, source):
+    TextEmbedding.delete_by_file_name_and_source(
+        session, file_name, source
+    )  # Rensa gamla embeddings för samma fil och källa
 
     sentences = sent_tokenize(content)
     if not sentences:
@@ -158,7 +162,7 @@ def save_vector(session, model, file_name, content, source=None):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Populate the vector database from source files.")
-    parser.add_argument("--folder", default="all_articles", help="Folder containing source files")
+    parser.add_argument("--folder", default="all_articles", help="Folder in resources to process")
     parser.add_argument(
         "--limit", type=int, default=None, help="Maximum number of files to process"
     )
@@ -169,7 +173,7 @@ if __name__ == "__main__":
     start_time = time.perf_counter()
 
     args = parse_args(sys.argv[1:])
-    populate_vector_db("./" + args.folder, limit=args.limit)
+    populate_vector_db(here() / "resources" / args.folder, limit=args.limit)
 
     elapsed_time = time.perf_counter() - start_time
     print(f"⏱️  Tid förfluten:         {elapsed_time:.4f} sekunder")

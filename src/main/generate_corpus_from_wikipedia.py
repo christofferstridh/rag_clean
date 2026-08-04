@@ -2,6 +2,7 @@ import os
 import re
 import time
 import requests
+from pyprojroot import here
 
 
 def sanitize_filename(filename):
@@ -21,7 +22,9 @@ def _request_json(url, params, session, max_retries=5):
             response = session.get(url, params=params, headers=headers, timeout=30)
             if response.status_code == 429:
                 retry_after = response.headers.get("Retry-After")
-                wait_seconds = float(retry_after) if retry_after and retry_after.isdigit() else delay
+                wait_seconds = (
+                    float(retry_after) if retry_after and retry_after.isdigit() else delay
+                )
                 print(f"Rate limited by Wikipedia. Waiting {wait_seconds}s before retrying...")
                 time.sleep(wait_seconds)
                 delay *= 2
@@ -48,7 +51,9 @@ def search_wikipedia_titles(search_term, results=10, session=None):
         "format": "json",
         "redirects": "resolve",
     }
-    data = _request_json("https://en.wikipedia.org/w/api.php", params, session or requests.Session())
+    data = _request_json(
+        "https://en.wikipedia.org/w/api.php", params, session or requests.Session()
+    )
     return data[1] if len(data) > 1 else []
 
 
@@ -61,7 +66,9 @@ def fetch_page_content(title, session=None):
         "format": "json",
         "redirects": 1,
     }
-    data = _request_json("https://en.wikipedia.org/w/api.php", params, session or requests.Session())
+    data = _request_json(
+        "https://en.wikipedia.org/w/api.php", params, session or requests.Session()
+    )
     pages = data.get("query", {}).get("pages", {})
     if not pages:
         raise ValueError(f"No page data returned for '{title}'")
@@ -81,7 +88,9 @@ def generate_corpus(search_term="human rights", num_articles=50, output_dir="all
     session = requests.Session()
 
     try:
-        search_results = search_wikipedia_titles(search_term, results=request_limit, session=session)
+        search_results = search_wikipedia_titles(
+            search_term, results=request_limit, session=session
+        )
     except Exception as e:
         print(f"Unable to search Wikipedia: {e}")
         return articles
@@ -91,7 +100,7 @@ def generate_corpus(search_term="human rights", num_articles=50, output_dir="all
             time.sleep(1.0)
             content = fetch_page_content(title, session=session)
             filename = f"{sanitize_filename(title)}.txt"
-            filepath = os.path.join(output_dir, filename)
+            filepath = here() / "resources" / output_dir / filename
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
             articles.append((title, filepath))
