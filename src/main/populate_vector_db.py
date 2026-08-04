@@ -1,4 +1,5 @@
 import argparse
+import inspect
 import os
 import sys
 import time
@@ -75,13 +76,16 @@ class OllamaEmbeddingWrapper:
 
 
 def _save_vector_with_source(session, model, file_name, content, source):
-    try:
-        save_vector(session, model, file_name, content, source)
-    except TypeError as exc:
-        if "unexpected keyword argument 'source'" in str(exc):
-            save_vector(session, model, file_name, content, source)  # fallback without keyword
-        else:
-            raise
+    signature = inspect.signature(save_vector)
+    parameters = signature.parameters.values()
+    accepts_source = any(parameter.name == "source" for parameter in parameters) or any(
+        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters
+    )
+
+    if accepts_source:
+        save_vector(session, model, file_name, content, source=source)
+    else:
+        save_vector(session, model, file_name, content)
 
 
 def populate_vector_db(folder_path, limit=None):
@@ -93,7 +97,8 @@ def populate_vector_db(folder_path, limit=None):
     # för bge-m3
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
 
-    source = folder_path.parts[-1]  # sista mappen i sökv
+    folder_path = os.fspath(folder_path)
+    source = os.path.basename(os.path.normpath(folder_path))
     files = sorted(os.listdir(folder_path))
     if limit is not None:
         files = files[:limit]

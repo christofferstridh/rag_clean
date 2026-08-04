@@ -256,6 +256,23 @@ def test_populate_vector_db_respects_optional_limit(tmp_path, monkeypatch):
     assert processed_files == ["first.txt", "second.txt"]
 
 
+def test_populate_vector_db_passes_source_to_save_vector_when_supported(monkeypatch, tmp_path):
+    (tmp_path / "sample.txt").write_text("Some text", encoding="utf-8")
+
+    captured = {}
+
+    def fake_save_vector(session, model, file_name, content, source):
+        captured["source"] = source
+
+    monkeypatch.setattr(populate_vector_db, "get_psql_session", lambda: FakeSavedSession())
+    monkeypatch.setattr(populate_vector_db, "save_vector", fake_save_vector)
+    monkeypatch.setattr(populate_vector_db, "OllamaEmbeddingWrapper", lambda model_name: object())
+
+    populate_vector_db.populate_vector_db(str(tmp_path))
+
+    assert captured["source"] == tmp_path.name
+
+
 def test_populate_vector_db_processes_pdf_files(monkeypatch, tmp_path):
     target_file = tmp_path / "sample.pdf"
     target_file.write_bytes(b"pdf")
