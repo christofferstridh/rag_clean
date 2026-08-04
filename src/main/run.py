@@ -25,6 +25,20 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
 
 
 def is_unique_to_window(existing_matches, current_match, group_window_size=5):
+    """Check whether a match is sufficiently far from existing matches in the same file.
+
+    The function compares the current match against previously accepted matches and
+    returns ``False`` when they overlap within the configured window size for the
+    same file. This helps avoid near-duplicate results in the retrieved context.
+
+    Args:
+        existing_matches: A list of already accepted matches to compare against.
+        current_match: The candidate match being evaluated for uniqueness.
+        group_window_size: The allowed distance, in index terms rather than cosine similarity, between matches before they are considered separate enough.
+
+    Returns:
+        ``True`` if the current match is unique within the window, otherwise ``False``.
+    """
 
     for match in existing_matches:
         if match[3] != current_match[3]:
@@ -40,8 +54,19 @@ def is_unique_to_window(existing_matches, current_match, group_window_size=5):
     return True
 
 
-# Getting unique matches from search results
 def get_filtered_matches(search_results):
+    """Return a small set of non-overlapping matches from the search results.
+
+    The function iterates through the ranked search results and keeps the first
+    matches that are sufficiently far from previously accepted ones, avoiding
+    near-duplicate entries from the same file.
+
+    Args:
+        search_results: A list of candidate matches returned by the vector search.
+
+    Returns:
+        A list of up to five filtered matches that are considered distinct enough.
+    """
     unique_count = 0
     matches = []
     for result in search_results:
@@ -122,6 +147,21 @@ def get_min_max_ids(entry_ids, file_names, combined_groups, group_window_size):
 
 
 def get_surrounding_sentences(entry_ids, file_names, group_window_size, session):
+    """Retrieve surrounding sentences for grouped matches from the database.
+
+    The function groups matching entries by file and proximity, expands each group
+    to include a surrounding context window, and queries the database for all
+    sentences within that expanded range.
+
+    Args:
+        entry_ids: The IDs of the selected matches to use as anchors.
+        file_names: The file names corresponding to each selected match.
+        group_window_size: The number of surrounding entries to include around each match.
+        session: The database session used to query the sentence table.
+
+    Returns:
+        A list of database result sets, one for each grouped context window.
+    """
 
     grouped_entries = []
     for idx, id in enumerate(entry_ids):
@@ -152,8 +192,25 @@ def get_surrounding_sentences(entry_ids, file_names, group_window_size, session)
 
 
 def search_by_query(query, num_matches=5, group_window_size=5):
+    """Search the vector database for relevant text passages and return grouped context.
+
+    The function embeds the incoming query, retrieves the most relevant matches,
+    filters them to avoid near-duplicate results, and expands each match to include
+    surrounding sentences from the same file within a configurable window.
+
+    Args:
+        query: The search question or phrase to embed and retrieve context for.
+        num_matches: The maximum number of top matches to keep after filtering.
+        group_window_size: The size of the surrounding context window around each match.
+
+    Returns:
+        A dictionary containing the filtered match results and the grouped surrounding
+        sentences retrieved from the database.
+    """
 
     session = get_psql_session()
+
+    # 1. vi börjar med att embedda queryn
 
     # bge-m3
     model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
@@ -183,8 +240,13 @@ def search_by_query(query, num_matches=5, group_window_size=5):
         "query_embedding_length": len(query_embedding),
         "query_embedding_sample": query_embedding[:5],
     }
+    # 2. nu gör vi sökningen mot databasen (med queryn som embeddingssiffror)
     search_results = search_embeddings(
-        query_embedding, session=session, limit=num_matches * (2 * group_window_size + 1)
+        query_embedding,
+        session=session,
+        # alltså ta group_window_size på vardera sida av matchen, plus matchen själv, och multiplicera
+        # med num_matches för att få tillräckligt många rader att filtrera på
+        limit=num_matches * (2 * group_window_size + 1),
     )
     debug_data["search_results"] = search_results
     filtered_matches = get_filtered_matches(search_results)
