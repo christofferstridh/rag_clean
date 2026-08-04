@@ -1,5 +1,3 @@
-# Check if a matches context window overlaps with another matches context window.
-import gc
 import os
 import resource
 import subprocess
@@ -7,271 +5,47 @@ import sys
 import threading
 import time
 
+from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from ollama import chat
-
-# för miniLm
-# from sentence_transformers import SentenceTransformer
 
 try:
     from .config import Config
-    from .db_stuff import TextEmbedding, get_psql_session
-    from .populate_vector_db import OllamaEmbeddingWrapper
-    from .retrieve_vector_data import search_embeddings
+    from .vector_store import configure_embedding_model, get_vector_store
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from config import Config
-    from db_stuff import TextEmbedding, get_psql_session
-    from populate_vector_db import OllamaEmbeddingWrapper
-    from retrieve_vector_data import search_embeddings
+    from vector_store import configure_embedding_model, get_vector_store
 
 
-def is_unique_to_window(existing_matches, current_match, group_window_size=5):
-    """Check whether a match is sufficiently far from existing matches in the same file.
-
-    The function compares the current match against previously accepted matches and
-    returns ``False`` when they overlap within the configured window size for the
-    same file. This helps avoid near-duplicate results in the retrieved context.
-
-    Args:
-        existing_matches: A list of already accepted matches to compare against.
-        current_match: The candidate match being evaluated for uniqueness.
-        group_window_size: The allowed distance, in index terms rather than cosine similarity, between matches before they are considered separate enough.
-
-    Returns:
-        ``True`` if the current match is unique within the window, otherwise ``False``.
-    """
-
-    for match in existing_matches:
-        if match[3] != current_match[3]:
-            continue
-        if (
-            match[1] > current_match[1] + group_window_size
-            or match[1] < current_match[1] - group_window_size
-        ):
-            continue
-        else:
-            return False
-
-    return True
-
-
-def get_filtered_matches(search_results):
-    """Return a small set of non-overlapping matches from the search results.
-
-    The function iterates through the ranked search results and keeps the first
-    matches that are sufficiently far from previously accepted ones, avoiding
-    near-duplicate entries from the same file.
-
-    Args:
-        search_results: A list of candidate matches returned by the vector search.
-
-    Returns:
-        A list of up to five filtered matches that are considered distinct enough.
-    """
-    unique_count = 0
-    matches = []
-    for result in search_results:
-        if unique_count >= 5:
-            break
-        if is_unique_to_window(matches, result):
-            unique_count += 1
-            matches.append(result)
-
-    return matches
-
-
-def group_entries(entry_ids, file_names, index_of_interest, group_window_size):
-    """Identify if an entry with index index_of_interest needs grouping with other entries.
-
-    If it needs no grouping, return an array with just its index (will be handled as in get_surrounding_sentences)
-    If it needs grouping with one or more entries, return array of indices of those entries.
-    """
-
-    file_name_of_interest = file_names[index_of_interest]
-
-    group_idxs = [index_of_interest]
-
-    for idx, file_name in enumerate(file_names):
-        if idx == index_of_interest:
-            continue
-
-        is_nearby_by_position = abs(idx - index_of_interest) <= group_window_size
-        is_same_file = file_name == file_name_of_interest
-
-        if is_nearby_by_position and is_same_file:
-            group_idxs.append(idx)
-
-    return group_idxs
-
-
-def consolidate_groupings(grouped_entries):
-    """Given a list of lists with grouped entries, combine all lists that have one or more elements in common, then remove duplicates.
-    This should result in a number of lists equal to the number of matched contexts we want
-
-    Assumes we have run the function group_entries on each entry
-    """
-    original_groups = grouped_entries[:]
-    combined_groups = []
-
-    while len(original_groups):
-        current_grouping = original_groups[0][:]
-        original_groups.remove(original_groups[0])
-        for other_entry in original_groups:
-            for idx in current_grouping:
-                if idx in other_entry:
-                    current_grouping += other_entry
-                    original_groups.remove(other_entry)
-                    break
-
-        current_grouping = list(set(current_grouping))
-        combined_groups.append(current_grouping)
-
-    return combined_groups
-
-
-def get_min_max_ids(entry_ids, file_names, combined_groups, group_window_size):
-
-    min_ids = []
-    max_ids = []
-
-    for group in combined_groups:
-        min_id = min([entry_ids[i] for i in group])
-        max_id = max([entry_ids[i] for i in group])
-
-        min_id = min_id - group_window_size
-        max_id = max_id + group_window_size
-
-        min_ids.append(min_id)
-        max_ids.append(max_id)
-
-    return min_ids, max_ids
-
-
-def get_surrounding_sentences(entry_ids, file_names, group_window_size, session):
-    """Retrieve surrounding sentences for grouped matches from the database.
-
-    The function groups matching entries by file and proximity, expands each group
-    to include a surrounding context window, and queries the database for all
-    sentences within that expanded range.
-
-    Args:
-        entry_ids: The IDs of the selected matches to use as anchors.
-        file_names: The file names corresponding to each selected match.
-        group_window_size: The number of surrounding entries to include around each match.
-        session: The database session used to query the sentence table.
-
-    Returns:
-        A list of database result sets, one for each grouped context window.
-    """
-
-    grouped_entries = []
-    for idx, id in enumerate(entry_ids):
-        grouped_entries.append(
-            group_entries(
-                entry_ids, file_names, index_of_interest=idx, group_window_size=group_window_size
-            )
-        )
-
-    combined_groups = consolidate_groupings(grouped_entries)
-    min_ids, max_ids = get_min_max_ids(entry_ids, file_names, combined_groups, group_window_size)
-    surrounding_sentences = []
-
-    for min_id, max_id in zip(min_ids, max_ids):
-        surrounding_sentences.append(
-            session.query(
-                TextEmbedding.id,
-                TextEmbedding.sentence_number,
-                TextEmbedding.content,
-                TextEmbedding.file_name,
-            )
-            .filter(TextEmbedding.id >= min_id)
-            .filter(TextEmbedding.id <= max_id)
-            .all()
-        )
-
-    return surrounding_sentences
-
-
-def search_by_query(query, num_matches=5, group_window_size=5):
+def search_by_query(query, num_matches=5):
     """Search the vector database for relevant text passages and return grouped context.
 
-    The function embeds the incoming query, retrieves the most relevant matches,
-    filters them to avoid near-duplicate results, and expands each match to include
-    surrounding sentences from the same file within a configurable window.
-
-    Args:
-        query: The search question or phrase to embed and retrieve context for.
-        num_matches: The maximum number of top matches to keep after filtering.
-        group_window_size: The size of the surrounding context window around each match.
+    Replaces the old hand-rolled pipeline:
+      - get_filtered_matches / is_unique_to_window  -> MMR retrieval (vector_store_query_mode="mmr")
+      - group_entries / consolidate_groupings / get_min_max_ids / get_surrounding_sentences
+        -> MetadataReplacementPostProcessor, which swaps each matched sentence back out
+           for its precomputed "window" of surrounding sentences (built at ingestion
+           time by SentenceWindowNodeParser in populate_vector_db.py)
 
     Returns:
-        A dictionary containing the filtered match results and the grouped surrounding
-        sentences retrieved from the database.
+        A list of NodeWithScore, each already expanded to its surrounding window
+        and de-duplicated/diversified via MMR.
     """
+    configure_embedding_model()  # sets Settings.embed_model = OllamaEmbedding(...)
+    vector_store = get_vector_store()
+    index = VectorStoreIndex.from_vector_store(vector_store)
 
-    session = get_psql_session()
-
-    # 1. vi börjar med att embedda queryn
-
-    # bge-m3
-    model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
-
-    # miniLM
-    # model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-
-    # bge-m3
-    query_embedding = model.encode(query)
-    if (
-        isinstance(query_embedding, list)
-        and query_embedding
-        and isinstance(query_embedding[0], (list, tuple))
-    ):
-        query_embedding = query_embedding[0]
-
-    del model
-    gc.collect()
-
-    # just nu är max 1 modell aktiv genom export i bashrc men man kan ockås Tvinga Ollama att omedelbart kasta ut embedding-modellen ur VRAM
-    # ollama.generate(
-    # model='ryanshillington/Qwen3-Embedding-0.6B:latest',
-    # keep_alive=0
-    # )
-
-    debug_data = {
-        "query_embedding_length": len(query_embedding),
-        "query_embedding_sample": query_embedding[:5],
-    }
-    # 2. nu gör vi sökningen mot databasen (med queryn som embeddingssiffror)
-    search_results = search_embeddings(
-        query_embedding,
-        session=session,
-        # alltså ta group_window_size på vardera sida av matchen, plus matchen själv, och multiplicera
-        # med num_matches för att få tillräckligt många rader att filtrera på
-        limit=num_matches * (2 * group_window_size + 1),
+    retriever = index.as_retriever(
+        similarity_top_k=num_matches,
+        vector_store_query_mode="mmr",
+        vector_store_kwargs={"mmr_threshold": Config.MMR_THRESHOLD},
     )
-    debug_data["search_results"] = search_results
-    filtered_matches = get_filtered_matches(search_results)
-    debug_data["filtered_matches"] = filtered_matches
+    nodes = retriever.retrieve(query)
 
-    entry_ids = [i[0] for i in filtered_matches]
-    file_names = [i[3] for i in filtered_matches]
+    postprocessor = MetadataReplacementPostProcessor(target_metadata_key="window")
+    nodes = postprocessor.postprocess_nodes(nodes)
 
-    surrounding = get_surrounding_sentences(
-        entry_ids=entry_ids,
-        file_names=file_names,
-        group_window_size=group_window_size,
-        session=session,
-    )
-    debug_data["surrounding_sentences"] = surrounding
-
-    with open("search_debug.txt", "w", encoding="utf-8") as debug_file:
-        debug_file.write("DEBUG SEARCH OUTPUT\n")
-        for key, value in debug_data.items():
-            debug_file.write(f"{key}: {value}\n")
-
-    return {
-        "surrounding_sentences": surrounding,
-        "filtered_matches": filtered_matches,
-    }
+    return nodes
 
 
 class WSLGPUMonitor(threading.Thread):
@@ -319,11 +93,6 @@ if __name__ == "__main__":
 
     # ---------------
 
-    # query = "What is the most prolific area of human rights transgressions in Asia?"
-    # om man söker på förekomst typ ordmoln bland artiklarna så är det ?"
-    # query = "Why where the thai woodcutters killed?"
-    # vi förväntar oss ett svar i stil med: "They were mistaken for terrorists"
-
     query = "Varför dödades de thailändska skogshuggarna?"
 
     if len(sys.argv) > 1:
@@ -331,41 +100,23 @@ if __name__ == "__main__":
 
     # Force embeddings to CPU
     os.environ["OLLAMA_NUM_GPU"] = "0"
-    context_response = search_by_query(query)
+    scored_nodes = search_by_query(query)
     # reset to use GPU for reasoning model
     os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
 
-    selected_group_count = None
-    selected_scores = []
-    if isinstance(context_response, dict):
-        context = context_response.get("surrounding_sentences", [])
-        filtered_matches = context_response.get("filtered_matches", [])
+    selected_scores = [n.score for n in scored_nodes if n.score is not None][:5]
+    context_text = "\n\n".join(n.get_content() for n in scored_nodes)
 
-        top_scores = [row[-1] for row in filtered_matches if len(row) > 4]
-        selected_scores = top_scores[:5]
-        if len(top_scores) >= 1 and max(top_scores[:2]) < 0.5:
-            context = context[:1]
-        else:
-            context = context[: min(5, len(context))]
-        selected_group_count = len(context)
-    else:
-        context = context_response
+    with open("search_debug.txt", "w", encoding="utf-8") as debug_file:
+        debug_file.write("DEBUG SEARCH OUTPUT\n")
+        debug_file.write(f"query: {query}\n")
+        debug_file.write(f"num_nodes_returned: {len(scored_nodes)}\n")
+        debug_file.write(f"selected_scores: {selected_scores}\n")
+        for n in scored_nodes:
+            debug_file.write(
+                f"- file: {n.metadata.get('file_name')} score: {n.score} content: {n.get_content()!r}\n"
+            )
 
-    if isinstance(context, list):
-        context_text = "\n".join(row[2] for group in context for row in group if len(row) > 2)
-    else:
-        context_text = str(context)
-
-    # print (f"query: {query}")
-    # print (f"context: {context_text}")
-
-    # prompt = f"<|content_start>{context_text}<|content_end> {query}"
-    # response = chat(model='phi4-mini_4096ctx', messages=[
-    # {
-    #     'role': 'user',
-    #     'content': prompt,
-    # },
-    # ])
     prompt = f"""
 You are a retrieval-augmented assistant.
 
@@ -383,9 +134,8 @@ Question:
 
     with open("prompt_debug.txt", "w", encoding="utf-8") as prompt_file:
         prompt_file.write("PROMPT DEBUG OUTPUT\n")
-        if selected_group_count is not None:
-            prompt_file.write(f"selected_group_count: {selected_group_count}\n")
-            prompt_file.write(f"selected_scores: {selected_scores}\n")
+        prompt_file.write(f"selected_group_count: {len(scored_nodes)}\n")
+        prompt_file.write(f"selected_scores: {selected_scores}\n")
         prompt_file.write(f"context_text length: {len(context_text)}\n")
         prompt_file.write("--- CONTEXT_TEXT START ---\n")
         prompt_file.write(context_text)
@@ -402,13 +152,11 @@ Question:
     }
 
     response = chat(
-        # model='mistral:7b-instruct-q4_K_M',
         model=Config.REASONING_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
         stream=False,
         options=options,
         keep_alive=Config.OLLAMA_KEEP_ALIVE,
-        # extra_body={"chat_template_kwargs" : {"enable_thinking": False}} # tror det bara är för qwen 3.5 - nej, funkar inte: got an unexpected keyword argument 'extra_body
     )
 
     print(response.message.content)

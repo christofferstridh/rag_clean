@@ -1,101 +1,87 @@
 import argparse
-import inspect
 import os
 import sys
 import time
 
 import fitz  # från pymupdf
-import ollama
 import pytesseract
+from llama_index.core import Document, VectorStoreIndex
+from llama_index.core.node_parser import SentenceWindowNodeParser
 from nltk.tokenize import sent_tokenize
 from PIL import Image
-
-# för MiniLM
-# from sentence_transformers import SentenceTransformer
-try:
-    from .config import Config
-    from .db_stuff import get_psql_session, TextEmbedding
-except ImportError:  # pragma: no cover - fallback for direct script execution
-    from config import Config
-    from db_stuff import get_psql_session, TextEmbedding
-
 from pyprojroot import here
 
-
-# Istället för SentenceTransformer, skapar vi en enkel funktion/klass
-class OllamaEmbeddingWrapper:
-    def __init__(self, model_name):
-        self.model_name = model_name
-
-    def encode(self, sentences):
-        # Om det är en singel sträng, gör om till lista
-        if isinstance(sentences, str):
-            sentences = [sentences]
-
-        options = Config.OLLAMA_EMBEDDING_OPTIONS or {}
-
-        def _call(func, **kwargs):
-            try:
-                return func(**kwargs)
-            except TypeError:
-                minimal_kwargs = {
-                    k: v for k, v in kwargs.items() if k in {"model", "prompt", "input"}
-                }
-                return func(**minimal_kwargs)
-
-        if hasattr(ollama, "embed"):
-            response = _call(
-                ollama.embed,
-                model=self.model_name,
-                input=sentences,
-                options=options,
-                keep_alive=Config.OLLAMA_KEEP_ALIVE,
-            )
-        elif hasattr(ollama, "embeddings"):
-            prompt = sentences[0] if isinstance(sentences, list) else sentences
-            response = _call(
-                ollama.embeddings,
-                model=self.model_name,
-                prompt=prompt,
-                options=options,
-                keep_alive=Config.OLLAMA_KEEP_ALIVE,
-            )
-        else:
-            raise AttributeError("ollama client has no embed or embeddings method")
-
-        embeddings = response.get("embeddings", response.get("embedding"))
-        if embeddings is None:
-            raise ValueError("No embedding returned from Ollama")
-
-        if len(sentences) == 1 and embeddings and isinstance(embeddings[0], (int, float)):
-            embeddings = [embeddings]
-        elif embeddings and isinstance(embeddings[0], (int, float)):
-            embeddings = [embeddings] * len(sentences)
-
-        return embeddings
+try:
+    from .config import Config
+    from .vector_store import configure_embedding_model, get_vector_store
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import Config
+    from vector_store import configure_embedding_model, get_vector_store
 
 
-def _save_vector_with_source(session, model, file_name, content, source):
-    signature = inspect.signature(save_vector)
-    parameters = signature.parameters.values()
-    accepts_source = any(parameter.name == "source" for parameter in parameters) or any(
-        parameter.kind == inspect.Parameter.VAR_KEYWORD for parameter in parameters
+def _read_file_content(file_path, file_name):
+    """Extract raw text content from a .txt, .pdf, or image file. Returns None
+    for unsupported extensions."""
+    if file_name.endswith(".txt"):
+        with open(file_path, "r", encoding="utf-8") as f:
+            return f.read()
+
+    if file_name.endswith(".pdf"):
+        with fitz.open(file_path) as f:
+            content = ""
+            for page in f:
+                page_text = page.get_text()
+                content += (page_text if isinstance(page_text, str) else str(page_text)) + "\n"
+            return content
+
+    if file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
+        with Image.open(file_path) as img:
+            return pytesseract.image_to_string(img)
+
+    return None
+
+
+def build_node_parser():
+    """The sentence-window replacement for the old sentence-by-sentence rows +
+    manual group_entries/consolidate_groupings/get_min_max_ids logic. Each
+    node is one sentence; the surrounding WINDOW_SIZE sentences on either side
+    are stored as metadata ("window") and swapped back in at query time by
+    MetadataReplacementPostProcessor (see run.py).
+    """
+    return SentenceWindowNodeParser.from_defaults(
+        sentence_splitter=sent_tokenize,  # same nltk tokenizer as before, handles Swedish fine
+        window_size=Config.WINDOW_SIZE,
+        window_metadata_key="window",
+        original_text_metadata_key="original_text",
     )
 
-    if accepts_source:
-        save_vector(session, model, file_name, content, source=source)
-    else:
-        save_vector(session, model, file_name, content)
+
+def index_document(index, node_parser, file_name, content, source):
+    """(Re-)index a single file: drop any previously-indexed nodes for this
+    file_name+source, then parse and insert fresh nodes. This is the
+    replacement for TextEmbedding.delete_by_file_name_and_source + save_vector.
+    """
+    doc_id = f"{source}::{file_name}"
+
+    # Remove any nodes from a previous run of this same file (no-op if none exist).
+    try:
+        index.delete_ref_doc(doc_id, delete_from_docstore=True)
+    except Exception:
+        pass
+
+    document = Document(text=content, doc_id=doc_id, metadata={"file_name": file_name, "source": source})
+    nodes = node_parser.get_nodes_from_documents([document])
+    if not nodes:
+        return
+
+    index.insert_nodes(nodes)
 
 
 def populate_vector_db(folder_path, limit=None):
-    session = get_psql_session()
-
-    # för miniLM
-    # model = SentenceTransformer("sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2")
-
-    # för bge-m3
-    model = OllamaEmbeddingWrapper(Config.EMBEDDING_MODEL_NAME)
+    configure_embedding_model()  # sets Settings.embed_model = OllamaEmbedding(...)
+    vector_store = get_vector_store()
+    index = VectorStoreIndex.from_vector_store(vector_store)
+    node_parser = build_node_parser()
 
     folder_path = os.fspath(folder_path)
     source = os.path.basename(os.path.normpath(folder_path))
@@ -104,73 +90,25 @@ def populate_vector_db(folder_path, limit=None):
         files = files[:limit]
     total = len(files)
 
-    for index, file_name in enumerate(files, start=1):
+    for i, file_name in enumerate(files, start=1):
+        file_path = os.path.join(folder_path, file_name)
         try:
-            if file_name.endswith(".txt"):
-                file_path = os.path.join(folder_path, file_name)
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                _save_vector_with_source(session, model, file_name, content, source)
+            content = _read_file_content(file_path, file_name)
+            if content is None:
+                continue
 
-            elif file_name.endswith(".pdf"):
-                file_path = os.path.join(folder_path, file_name)
-                with fitz.open(file_path) as f:
-                    content = ""
-                    for page in f:
-                        page_text = page.get_text()
-                        if isinstance(page_text, str):
-                            content += page_text + "\n"
-                        else:
-                            content += str(page_text) + "\n"
-                    _save_vector_with_source(session, model, file_name, content, source)
-
-            elif file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
-                file_path = os.path.join(folder_path, file_name)
-                with Image.open(file_path) as img:
-                    content = pytesseract.image_to_string(img)
-                _save_vector_with_source(session, model, file_name, content, source)
-
-            print(f"Processed file {index} of {total}")
+            index_document(index, node_parser, file_name, content, source)
+            print(f"Processed file {i} of {total}: {file_name}")
 
         except Exception as e:
             print(f"Error processing {file_name}: {str(e)}")
             continue
 
-    session.commit()
-    session.close()
-    return
-
-
-def save_vector(session, model, file_name, content, source):
-    TextEmbedding.delete_by_file_name_and_source(
-        session, file_name, source
-    )  # Rensa gamla embeddings för samma fil och källa
-
-    sentences = sent_tokenize(content)
-    if not sentences:
-        return
-
-    embeddings = model.encode(sentences)
-    for i, (embedding, sentence) in enumerate(zip(embeddings, sentences)):
-        new_embedding = TextEmbedding(
-            embedding=embedding,
-            content=sentence,
-            file_name=file_name,
-            sentence_number=i + 1,
-            source=source,
-        )
-        session.add(new_embedding)
-
-    session.commit()
-    print(f"Inserted embeddings for {file_name} into the database.")
-
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Populate the vector database from source files.")
     parser.add_argument("--folder", default="all_articles", help="Folder in resources to process")
-    parser.add_argument(
-        "--limit", type=int, default=None, help="Maximum number of files to process"
-    )
+    parser.add_argument("--limit", type=int, default=None, help="Maximum number of files to process")
     return parser.parse_args(argv)
 
 
