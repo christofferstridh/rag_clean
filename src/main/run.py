@@ -80,11 +80,11 @@ def get_filtered_matches(search_results):
 
 
 def group_entries(entry_ids, file_names, index_of_interest, group_window_size):
+    """Identify if an entry with index index_of_interest needs grouping with other entries.
 
-    # Identify if an entry with index index_of_interest needs grouping with other entries.
-
-    # If it needs no grouping, return an array with just its index (will be handled as in get_surrounding_sentences)
-    # If it needs grouping with one or more entries, return array of indices of those entries.
+    If it needs no grouping, return an array with just its index (will be handled as in get_surrounding_sentences)
+    If it needs grouping with one or more entries, return array of indices of those entries.
+    """
 
     file_name_of_interest = file_names[index_of_interest]
 
@@ -104,11 +104,11 @@ def group_entries(entry_ids, file_names, index_of_interest, group_window_size):
 
 
 def consolidate_groupings(grouped_entries):
-    # Given a list of lists with grouped entries, combine all lists that have one or more elements in common, then remove duplicates.
-    # This should result in a number of lists equal to the number of matched contexts we want
+    """Given a list of lists with grouped entries, combine all lists that have one or more elements in common, then remove duplicates.
+    This should result in a number of lists equal to the number of matched contexts we want
 
-    # Assumes we have run the function group_entries on each entry
-
+    Assumes we have run the function group_entries on each entry
+    """
     original_groups = grouped_entries[:]
     combined_groups = []
 
