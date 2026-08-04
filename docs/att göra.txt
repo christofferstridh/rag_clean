@@ -1,3 +1,7 @@
+ändra upsert till att använda både filename och source
+
+fixa så att det går att köra pop o run fr root dir
+
 RAG
 
 	byta till bge-m3:latest som embeddings och köra om populate

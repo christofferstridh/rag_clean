@@ -11,8 +11,12 @@ from PIL import Image
 
 # för MiniLM
 # from sentence_transformers import SentenceTransformer
-from config import Config
-from db_stuff import get_psql_session, TextEmbedding
+try:
+    from .config import Config
+    from .db_stuff import get_psql_session, TextEmbedding
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from config import Config
+    from db_stuff import get_psql_session, TextEmbedding
 
 
 # Istället för SentenceTransformer, skapar vi en enkel funktion/klass
@@ -68,6 +72,16 @@ class OllamaEmbeddingWrapper:
         return embeddings
 
 
+def _save_vector_with_source(session, model, file_name, content, source):
+    try:
+        save_vector(session, model, file_name, content, source=source)
+    except TypeError as exc:
+        if "unexpected keyword argument 'source'" in str(exc):
+            save_vector(session, model, file_name, content)
+        else:
+            raise
+
+
 def populate_vector_db(folder_path, limit=None):
     session = get_psql_session()
 
@@ -89,7 +103,7 @@ def populate_vector_db(folder_path, limit=None):
                 file_path = os.path.join(folder_path, file_name)
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                    save_vector(session, model, file_name, content, source=source)
+                _save_vector_with_source(session, model, file_name, content, source)
 
             elif file_name.endswith(".pdf"):
                 file_path = os.path.join(folder_path, file_name)
@@ -101,13 +115,13 @@ def populate_vector_db(folder_path, limit=None):
                             content += page_text + "\n"
                         else:
                             content += str(page_text) + "\n"
-                    save_vector(session, model, file_name, content, source=source)
+                    _save_vector_with_source(session, model, file_name, content, source)
 
             elif file_name.endswith((".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".gif")):
                 file_path = os.path.join(folder_path, file_name)
                 with Image.open(file_path) as img:
                     content = pytesseract.image_to_string(img)
-                save_vector(session, model, file_name, content, source=source)
+                _save_vector_with_source(session, model, file_name, content, source)
 
             print(f"Processed file {index} of {total}")
 
@@ -120,7 +134,7 @@ def populate_vector_db(folder_path, limit=None):
     return
 
 
-def save_vector(session, model, file_name, content, source):
+def save_vector(session, model, file_name, content, source=None):
     TextEmbedding.delete_by_file_name(session, file_name)
 
     sentences = sent_tokenize(content)
