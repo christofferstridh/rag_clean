@@ -2,6 +2,7 @@ from sqlalchemy import create_engine, Column, Integer, String, text
 from sqlalchemy.orm import sessionmaker, declarative_base
 from pgvector.sqlalchemy import Vector
 
+# en bas för sqlalchemy ORM, typ dess init
 Base = declarative_base()
 
 
@@ -14,10 +15,6 @@ def get_psql_session():
     return Session()
 
 
-# //print("yo")
-# //print(get_psql_session())
-
-
 class TextEmbedding(Base):
     __tablename__ = "text_embeddings"
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -25,6 +22,7 @@ class TextEmbedding(Base):
     content = Column(String)
     file_name = Column(String)
     sentence_number = Column(Integer)
+    source = Column(String)  # New column for source
 
     def __str__(self):
         return self.content + " " + str(self.id)

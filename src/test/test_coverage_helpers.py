@@ -1,5 +1,5 @@
-from main import generate_corpus, populate_vector_db, retrieve_vector_data, run
-from main.database_connect_embeddings import TextEmbedding
+from main import generate_corpus_from_wikipedia, populate_vector_db, retrieve_vector_data, run
+from main.db_stuff import TextEmbedding
 
 
 class FakeResponse:
@@ -91,11 +91,15 @@ class FakeSavedSession:
 
 
 def test_sanitize_filename_replaces_non_alphanumeric():
-    assert generate_corpus.sanitize_filename("Hello, World! 123") == "Hello_World_123"
+    assert (
+        generate_corpus_from_wikipedia.sanitize_filename("Hello, World! 123") == "Hello_World_123"
+    )
 
 
 def test_request_json_retries_on_rate_limit(monkeypatch):
-    monkeypatch.setattr(generate_corpus.time, "sleep", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        generate_corpus_from_wikipedia.time, "sleep", lambda *_args, **_kwargs: None
+    )
 
     session = FakeSession(
         [
@@ -104,14 +108,16 @@ def test_request_json_retries_on_rate_limit(monkeypatch):
         ]
     )
 
-    assert generate_corpus._request_json("https://example.org", {"q": "x"}, session) == {"ok": True}
+    assert generate_corpus_from_wikipedia._request_json(
+        "https://example.org", {"q": "x"}, session
+    ) == {"ok": True}
 
 
 def test_fetch_page_content_raises_when_no_pages():
     session = FakeSession([FakeResponse(200, payload={"query": {"pages": {}}})])
 
     try:
-        generate_corpus.fetch_page_content("Example", session=session)
+        generate_corpus_from_wikipedia.fetch_page_content("Example", session=session)
     except ValueError as exc:
         assert "No page data returned" in str(exc)
     else:
@@ -119,19 +125,21 @@ def test_fetch_page_content_raises_when_no_pages():
 
 
 def test_generate_corpus_writes_articles_to_output_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(generate_corpus.time, "sleep", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        generate_corpus,
+        generate_corpus_from_wikipedia.time, "sleep", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        generate_corpus_from_wikipedia,
         "search_wikipedia_titles",
         lambda search_term, results=10, session=None: ["Example Title"],
     )
     monkeypatch.setattr(
-        generate_corpus,
+        generate_corpus_from_wikipedia,
         "fetch_page_content",
         lambda title, session=None: f"content for {title}",
     )
 
-    articles = generate_corpus.generate_corpus(
+    articles = generate_corpus_from_wikipedia.generate_corpus(
         search_term="human rights",
         num_articles=1,
         output_dir=str(tmp_path),
@@ -143,12 +151,12 @@ def test_generate_corpus_writes_articles_to_output_dir(tmp_path, monkeypatch):
 
 def test_generate_corpus_returns_empty_list_on_search_failure(monkeypatch):
     monkeypatch.setattr(
-        generate_corpus,
+        generate_corpus_from_wikipedia,
         "search_wikipedia_titles",
         lambda *args, **kwargs: (_ for _ in ()).throw(RuntimeError("boom")),
     )
 
-    assert generate_corpus.generate_corpus(num_articles=3, output_dir="/tmp") == []
+    assert generate_corpus_from_wikipedia.generate_corpus(num_articles=3, output_dir="/tmp") == []
 
 
 def test_ollama_embedding_wrapper_encode_handles_strings_and_lists(monkeypatch):

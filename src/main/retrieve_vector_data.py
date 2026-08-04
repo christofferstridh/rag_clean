@@ -1,7 +1,4 @@
-try:
-    from .database_connect_embeddings import TextEmbedding
-except ImportError:  # pragma: no cover - fallback for direct script execution
-    from database_connect_embeddings import TextEmbedding
+from db_stuff import TextEmbedding
 
 
 def search_embeddings(query_embedding, session, limit=5):

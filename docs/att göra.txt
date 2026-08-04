@@ -22,3 +22,14 @@ RAG
 		använda termux?
 
 	gör klart kursen
+
+
+byt nltk.sent_tokenize till LangChain (RecursiveCharacterTextSplitter) - nu är chunks alltid exakt en mening vilket blir för stolpigt 
+ex:
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=1000,       # Max antal TECKEN per chunk (ca 150-200 ord)
+    chunk_overlap=200,     # Hur många tecken som ska överlappa mellan två chunks
+    separators=["\n\n", "\n", " ", ""] # Dela i första hand vid stycken, inte meningar
+)
+chunks = text_splitter.split_text(din_stora_text)

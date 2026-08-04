@@ -12,16 +12,10 @@ from ollama import chat
 # för miniLm
 # from sentence_transformers import SentenceTransformer
 
-try:
-    from .config import Config
-    from .database_connect_embeddings import TextEmbedding, get_psql_session
-    from .populate_vector_db import OllamaEmbeddingWrapper
-    from .retrieve_vector_data import search_embeddings
-except ImportError:  # pragma: no cover - fallback for direct script execution
-    from config import Config
-    from database_connect_embeddings import TextEmbedding, get_psql_session
-    from populate_vector_db import OllamaEmbeddingWrapper
-    from retrieve_vector_data import search_embeddings
+from config import Config
+from db_stuff import TextEmbedding, get_psql_session
+from populate_vector_db import OllamaEmbeddingWrapper
+from retrieve_vector_data import search_embeddings
 
 
 def is_unique_to_window(existing_matches, current_match, group_window_size=5):
