@@ -27,7 +27,7 @@ So: not something you're wrong to build by hand for a small project glued togeth
 
 
 # Jag
-
+can you swap my hand rolled for LlamaIndex?
 # Claude
 
 This is a real migration, not a search-and-replace: ingestion needs to attach the window metadata when nodes are created, so `populate_vector_db.py`, `config.py`, and `run.py` all change, and it needs a new Postgres table (LlamaIndex's `PGVectorStore` manages its own schema, different from your `TextEmbedding` ORM table) — meaning you re-embed and re-ingest your corpus once, but nothing else about your setup (Ollama, pgvector, Postgres itself) changes.What changed and why:

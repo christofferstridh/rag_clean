@@ -93,7 +93,14 @@ if __name__ == "__main__":
 
     # ---------------
 
-    query = "Varför dödades de thailändska skogshuggarna?"
+    # 1a artikeln (vatten etc) - mellansvår
+    # query = "Omfattar ICESCR rättigheter till vatten?"
+
+    # 1a artikeln - svår
+    query = "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?"
+
+    # # thailand - svår
+    # query = "Varför dödades de thailändska skogshuggarna?"
 
     if len(sys.argv) > 1:
         query = sys.argv[1]

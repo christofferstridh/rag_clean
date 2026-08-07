@@ -30,7 +30,7 @@ class Config:
 
     # --- Retrieval ---
     # Sentences captured on either side of a matched sentence (replaces group_window_size).
-    WINDOW_SIZE: int = 5
+    WINDOW_SIZE: int = 1
     # 0 = max diversity between results, 1 = max relevance/similarity (replaces the
     # hand-rolled is_unique_to_window near-duplicate filter).
     MMR_THRESHOLD: float = 0.5
