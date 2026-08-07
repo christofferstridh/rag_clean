@@ -81,7 +81,7 @@ def fetch_page_content(title, session=None):
 
 
 def generate_corpus(search_term="human rights", num_articles=50, output_dir="all_articles"):
-    os.makedirs(output_dir, exist_ok=True)
+    os.makedirs(here() / "resources" / output_dir, exist_ok=True)
 
     articles = []
     request_limit = max(1, min(int(num_articles), 50))
