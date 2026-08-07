@@ -26,7 +26,7 @@ class Config:
     # har varit nere på 1k o vänt vid perf problem, men 2k verkar funka bra nu
     OLLAMA_CONTEXT_SIZE: int = 2048
     # maximala antalet tokens (ord/bortdelar) som modellen får generera i ett och samma svar.
-    OLLAMA_NUM_PREDICT: int = 128
+    OLLAMA_NUM_PREDICT: int = 256
 
     # --- Retrieval ---
     # Sentences captured on either side of a matched sentence (replaces group_window_size).

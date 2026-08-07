@@ -6,7 +6,7 @@ import time
 import fitz  # från pymupdf
 import pytesseract
 from llama_index.core import Document, VectorStoreIndex
-from llama_index.core.node_parser import SentenceWindowNodeParser
+from llama_index.core.node_parser import MarkdownNodeParser, SentenceWindowNodeParser
 from nltk.tokenize import sent_tokenize
 from PIL import Image
 from pyprojroot import here
@@ -20,9 +20,9 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
 
 
 def _read_file_content(file_path, file_name):
-    """Extract raw text content from a .txt, .pdf, or image file. Returns None
+    """Extract raw text content from a .md, .pdf, or image file. Returns None
     for unsupported extensions."""
-    if file_name.endswith(".txt"):
+    if file_name.endswith(".md"):
         with open(file_path, "r", encoding="utf-8") as f:
             return f.read()
 
@@ -48,12 +48,13 @@ def build_node_parser():
     are stored as metadata ("window") and swapped back in at query time by
     MetadataReplacementPostProcessor (see run.py).
     """
-    return SentenceWindowNodeParser.from_defaults(
-        sentence_splitter=sent_tokenize,  # same nltk tokenizer as before, handles Swedish fine
-        window_size=Config.WINDOW_SIZE,
-        window_metadata_key="window",
-        original_text_metadata_key="original_text",
-    )
+    # return SentenceWindowNodeParser.from_defaults(
+    #     sentence_splitter=sent_tokenize,  # same nltk tokenizer as before, handles Swedish fine
+    #     window_size=Config.WINDOW_SIZE,
+    #     window_metadata_key="window",
+    #     original_text_metadata_key="original_text",
+    # )
+    return MarkdownNodeParser()
 
 
 def index_document(index, node_parser, file_name, content, source):
@@ -69,7 +70,9 @@ def index_document(index, node_parser, file_name, content, source):
     except Exception:
         pass
 
-    document = Document(text=content, doc_id=doc_id, metadata={"file_name": file_name, "source": source})
+    document = Document(
+        text=content, doc_id=doc_id, metadata={"file_name": file_name, "source": source}
+    )
     nodes = node_parser.get_nodes_from_documents([document])
     if not nodes:
         return
@@ -108,7 +111,9 @@ def populate_vector_db(folder_path, limit=None):
 def parse_args(argv=None):
     parser = argparse.ArgumentParser(description="Populate the vector database from source files.")
     parser.add_argument("--folder", default="all_articles", help="Folder in resources to process")
-    parser.add_argument("--limit", type=int, default=None, help="Maximum number of files to process")
+    parser.add_argument(
+        "--limit", type=int, default=None, help="Maximum number of files to process"
+    )
     return parser.parse_args(argv)
 
 

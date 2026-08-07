@@ -9,6 +9,8 @@ from llama_index.core import Settings, VectorStoreIndex
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from ollama import chat
 
+from llama_index.core.schema import MetadataMode
+
 try:
     from .config import Config
     from .vector_store import configure_embedding_model, get_vector_store
@@ -84,7 +86,6 @@ class WSLGPUMonitor(threading.Thread):
 
 # ==========================================
 
-
 if __name__ == "__main__":
     # --- 1. STARTA MÄTNINGAR ---
     gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
@@ -96,8 +97,11 @@ if __name__ == "__main__":
     # 1a artikeln (vatten etc) - mellansvår
     # query = "Omfattar ICESCR rättigheter till vatten?"
 
-    # 1a artikeln - svår
-    query = "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?"
+    # vattenartikeln - svår
+    # query = "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?"
+
+    # 1998 artikeln - lätt
+    query = """I "Human Rights Act 1998" så står det något om en mordbrännaren som ansåg sig ha rätt att vara i klassrummet, vad gällde det?"""
 
     # # thailand - svår
     # query = "Varför dödades de thailändska skogshuggarna?"
@@ -112,7 +116,14 @@ if __name__ == "__main__":
     os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
 
     selected_scores = [n.score for n in scored_nodes if n.score is not None][:5]
-    context_text = "\n\n".join(n.get_content() for n in scored_nodes)
+
+    EXCLUDE_FROM_LLM = ["document_id", "doc_id", "ref_doc_id", "_node_content", "_node_type"]
+    for n in scored_nodes:
+        n.node.excluded_llm_metadata_keys = EXCLUDE_FROM_LLM
+
+    context_text = "\n\n---\n\n".join(
+        n.get_content(metadata_mode=MetadataMode.LLM) for n in scored_nodes
+    )
 
     with open("search_debug.txt", "w", encoding="utf-8") as debug_file:
         debug_file.write("DEBUG SEARCH OUTPUT\n")

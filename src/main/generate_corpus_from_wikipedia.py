@@ -80,6 +80,15 @@ def fetch_page_content(title, session=None):
     return content
 
 
+def fix_paragraphs(content):
+    """
+    Fixes paragraphs in the Wikipedia content by replacing heading markers with Markdown-style headings.
+    """
+    content = re.sub(r"^===\s*(.*?)\s*===\s*$", r"### \1", content, flags=re.MULTILINE)
+    content = re.sub(r"^==\s*(.*?)\s*==\s*$", r"## \1", content, flags=re.MULTILINE)
+    return content
+
+
 def generate_corpus(search_term="human rights", num_articles=50, output_dir="all_articles"):
     os.makedirs(here() / "resources" / output_dir, exist_ok=True)
 
@@ -99,7 +108,10 @@ def generate_corpus(search_term="human rights", num_articles=50, output_dir="all
         try:
             time.sleep(1.0)
             content = fetch_page_content(title, session=session)
-            filename = f"{sanitize_filename(title)}.txt"
+
+            content = fix_paragraphs(content)
+
+            filename = f"{sanitize_filename(title)}.md"
             filepath = here() / "resources" / output_dir / filename
             with open(filepath, "w", encoding="utf-8") as f:
                 f.write(content)
