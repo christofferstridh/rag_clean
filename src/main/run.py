@@ -107,7 +107,9 @@ def main(query):
     # PurePath isolerar endast ok tecken
     safe_name = Path(query).name
 
-    with open(f"debug_out/search_debug {safe_name}.txt", "w", encoding="utf-8") as debug_file:
+    with open(
+        f"debug_out/debug_vector_search_result {safe_name}.txt", "w", encoding="utf-8"
+    ) as debug_file:
         debug_file.write("DEBUG SEARCH OUTPUT\n")
         debug_file.write(f"query: {query}\n")
         debug_file.write(f"num_nodes_returned: {len(scored_nodes)}\n")
@@ -132,15 +134,17 @@ Question:
 {query}
 """
 
-    with open(f"debug_out/prompt_debug {safe_name}.txt", "w", encoding="utf-8") as prompt_file:
+    with open(
+        f"debug_out/debug_whole_prompt_sent_to_llm {safe_name}.txt", "w", encoding="utf-8"
+    ) as prompt_file:
         prompt_file.write("PROMPT DEBUG OUTPUT\n")
+        prompt_file.write(f"question: {query}\n")
         prompt_file.write(f"selected_group_count: {len(scored_nodes)}\n")
         prompt_file.write(f"selected_scores: {selected_scores}\n")
         prompt_file.write(f"context_text length: {len(context_text)}\n")
         prompt_file.write("--- CONTEXT_TEXT START ---\n")
         prompt_file.write(context_text)
         prompt_file.write("\n--- CONTEXT_TEXT END ---\n")
-        prompt_file.write(f"question: {query}\n")
 
     options = Config.OLLAMA_REASONING_OPTIONS or {}
     options = {
@@ -168,14 +172,14 @@ if __name__ == "__main__":
         queries = [sys.argv[1]]
     else:
         queries = [
-            # 1a artikeln (vatten etc) - mellansvår
-            "Omfattar ICESCR rättigheter till vatten?",
+            # # 1a artikeln (vatten etc) - mellansvår
+            # "Omfattar ICESCR rättigheter till vatten?",
             # vattenartikeln - svår
             "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?",
-            # 1998 artikeln - lätt
-            """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
-            # thailand - svår
-            "Varför dödades de thailändska skogshuggarna?",
+            # # 1998 artikeln - lätt
+            # """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
+            # # thailand - svår
+            # "Varför dödades de thailändska skogshuggarna?",
         ]
     # --- 1. STARTA MÄTNINGAR ---
     gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
