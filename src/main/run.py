@@ -18,6 +18,8 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
     from config import Config
     from vector_store import configure_embedding_model, get_vector_store
 
+from pathlib import Path
+
 
 def search_by_query(query, num_matches=5):
     """Search the vector database for relevant text passages and return grouped context.
@@ -84,33 +86,10 @@ class WSLGPUMonitor(threading.Thread):
         self.stopped = True
 
 
-# ==========================================
-
-if __name__ == "__main__":
-    # --- 1. STARTA MÄTNINGAR ---
-    gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
-    gpu_tracker.start()
-    start_time = time.perf_counter()
-
-    # ---------------
-
-    # 1a artikeln (vatten etc) - mellansvår
-    # query = "Omfattar ICESCR rättigheter till vatten?"
-
-    # vattenartikeln - svår
-    # query = "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?"
-
-    # 1998 artikeln - lätt
-    query = """I "Human Rights Act 1998" så står det något om en mordbrännaren som ansåg sig ha rätt att vara i klassrummet, vad gällde det?"""
-
-    # # thailand - svår
-    # query = "Varför dödades de thailändska skogshuggarna?"
-
-    if len(sys.argv) > 1:
-        query = sys.argv[1]
-
+def main(query):
     # Force embeddings to CPU
     os.environ["OLLAMA_NUM_GPU"] = "0"
+    start_time = time.perf_counter()
     scored_nodes = search_by_query(query)
     # reset to use GPU for reasoning model
     os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
@@ -125,7 +104,10 @@ if __name__ == "__main__":
         n.get_content(metadata_mode=MetadataMode.LLM) for n in scored_nodes
     )
 
-    with open("search_debug.txt", "w", encoding="utf-8") as debug_file:
+    # PurePath isolerar endast ok tecken
+    safe_name = Path(query).name
+
+    with open(f"debug_out/search_debug {safe_name}.txt", "w", encoding="utf-8") as debug_file:
         debug_file.write("DEBUG SEARCH OUTPUT\n")
         debug_file.write(f"query: {query}\n")
         debug_file.write(f"num_nodes_returned: {len(scored_nodes)}\n")
@@ -150,7 +132,7 @@ Question:
 {query}
 """
 
-    with open("prompt_debug.txt", "w", encoding="utf-8") as prompt_file:
+    with open(f"debug_out/prompt_debug {safe_name}.txt", "w", encoding="utf-8") as prompt_file:
         prompt_file.write("PROMPT DEBUG OUTPUT\n")
         prompt_file.write(f"selected_group_count: {len(scored_nodes)}\n")
         prompt_file.write(f"selected_scores: {selected_scores}\n")
@@ -169,6 +151,7 @@ Question:
         **options,
     }
 
+    print(f"\nFRÅGA:\n{query}\nSVAR:\n")
     response = chat(
         model=Config.REASONING_MODEL_NAME,
         messages=[{"role": "user", "content": prompt}],
@@ -176,10 +159,31 @@ Question:
         options=options,
         keep_alive=Config.OLLAMA_KEEP_ALIVE,
     )
-
     print(response.message.content)
+    print(f"Denna fråga tog {(time.perf_counter() - start_time):.4f} sekunder")
 
-    # -----------------------------
+
+if __name__ == "__main__":
+    if len(sys.argv) > 1:
+        queries = [sys.argv[1]]
+    else:
+        queries = [
+            # 1a artikeln (vatten etc) - mellansvår
+            "Omfattar ICESCR rättigheter till vatten?",
+            # vattenartikeln - svår
+            "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?",
+            # 1998 artikeln - lätt
+            """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
+            # thailand - svår
+            "Varför dödades de thailändska skogshuggarna?",
+        ]
+    # --- 1. STARTA MÄTNINGAR ---
+    gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
+    gpu_tracker.start()
+    start_time = time.perf_counter()
+
+    for query in queries:
+        main(query)
 
     # --- 2. STOPPA MÄTNINGAR ---
     elapsed_time = time.perf_counter() - start_time
