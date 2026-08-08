@@ -41,8 +41,6 @@ def search_by_query(query, num_matches=Config.EMBEDDING_NUM_MATCHES):
 
     retriever = index.as_retriever(
         similarity_top_k=num_matches,
-        vector_store_query_mode="mmr",
-        vector_store_kwargs={"mmr_threshold": Config.MMR_THRESHOLD},
     )
     nodes = retriever.retrieve(query)
 
@@ -95,14 +93,30 @@ def main(query):
     # reset to use GPU for reasoning model
     os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
 
-    selected_scores = [n.score for n in scored_nodes if n.score is not None][:5]
+    THRESHOLD = Config.EMBEDDING_SCORE_TARGET
+    MAX_FILL = Config.LLM_MAX_CONTEXT_NODES
+
+    selected_nodes = []
+    if scored_nodes and scored_nodes[0].score is not None and scored_nodes[0].score >= THRESHOLD:
+        selected_nodes = [scored_nodes[0]]
+    else:
+        cumulative = 0.0
+        for n in scored_nodes:
+            if n.score is None:
+                continue
+            selected_nodes.append(n)
+            cumulative += n.score
+            if cumulative >= THRESHOLD or len(selected_nodes) >= MAX_FILL:
+                break
+
+    selected_scores = [n.score for n in selected_nodes if n.score is not None]
 
     EXCLUDE_FROM_LLM = ["document_id", "doc_id", "ref_doc_id", "_node_content", "_node_type"]
-    for n in scored_nodes:
+    for n in selected_nodes:
         n.node.excluded_llm_metadata_keys = EXCLUDE_FROM_LLM
 
     context_text = "\n\n---\n\n".join(
-        n.get_content(metadata_mode=MetadataMode.LLM) for n in scored_nodes
+        n.get_content(metadata_mode=MetadataMode.LLM) for n in selected_nodes
     )
 
     # PurePath isolerar endast ok tecken
@@ -173,14 +187,14 @@ if __name__ == "__main__":
         queries = [sys.argv[1]]
     else:
         queries = [
-            # # 1a artikeln (vatten etc) - mellansvår
-            # "Omfattar ICESCR rättigheter till vatten?",
+            # 1a artikeln (vatten etc) - mellansvår
+            "Omfattar ICESCR rättigheter till vatten?",
             # vattenartikeln - svår
             "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water) och gäller detta även Aboriginer?",
-            # # 1998 artikeln - lätt
-            # """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
-            # # thailand - svår
-            # "Varför dödades de thailändska skogshuggarna?",
+            # 1998 artikeln - lätt
+            """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
+            # thailand - svår
+            "Varför dödades de thailändska skogshuggarna?",
         ]
     # --- 1. STARTA MÄTNINGAR ---
     gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
