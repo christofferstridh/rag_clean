@@ -33,4 +33,6 @@ class Config:
     WINDOW_SIZE: int = 1
     # 0 = max diversity between results, 1 = max relevance/similarity (replaces the
     # hand-rolled is_unique_to_window near-duplicate filter).
-    MMR_THRESHOLD: float = 0.5
+    MMR_THRESHOLD: float = 0.7
+
+    EMBEDDING_NUM_MATCHES: int = 2

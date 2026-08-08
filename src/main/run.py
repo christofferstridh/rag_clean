@@ -21,7 +21,7 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
 from pathlib import Path
 
 
-def search_by_query(query, num_matches=5):
+def search_by_query(query, num_matches=Config.EMBEDDING_NUM_MATCHES):
     """Search the vector database for relevant text passages and return grouped context.
 
     Replaces the old hand-rolled pipeline:
@@ -46,8 +46,9 @@ def search_by_query(query, num_matches=5):
     )
     nodes = retriever.retrieve(query)
 
-    postprocessor = MetadataReplacementPostProcessor(target_metadata_key="window")
-    nodes = postprocessor.postprocess_nodes(nodes)
+    # inte helt säker på den här, gör metadata-strip manuellt senare istället - nu när jag testar utan så blir det bättre resultat, alltså med default 0 windowing som ingår i MarkdownNodeParser
+    # postprocessor = MetadataReplacementPostProcessor(target_metadata_key="window")
+    # nodes = postprocessor.postprocess_nodes(nodes)
 
     return nodes
 
@@ -175,7 +176,7 @@ if __name__ == "__main__":
             # # 1a artikeln (vatten etc) - mellansvår
             # "Omfattar ICESCR rättigheter till vatten?",
             # vattenartikeln - svår
-            "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water)?",
+            "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water) och gäller detta även Aboriginer?",
             # # 1998 artikeln - lätt
             # """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
             # # thailand - svår

@@ -1,3 +1,5 @@
+byta till hierachical enl egen md
+
 ändra upsert till att använda både filename och source
 
 fixa så att det går att köra pop o run fr root dir
