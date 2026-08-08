@@ -12,6 +12,7 @@ __pycache__/
 # Local debug artifacts
 search_debug.txt
 prompt_debug.txt
-src/main/search_debug.txt
-src/main/prompt_debug.txt
+**/search_debug*.txt
+**/prompt_debug*.txt
 .coverage
+debug_out/
