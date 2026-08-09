@@ -5,7 +5,7 @@ import sys
 import threading
 import time
 
-from llama_index.core import Settings, VectorStoreIndex
+from llama_index.core import Settings, StorageContext, VectorStoreIndex
 from llama_index.core.postprocessor import MetadataReplacementPostProcessor
 from ollama import chat
 
@@ -51,6 +51,45 @@ def search_by_query(query, num_matches=Config.EMBEDDING_NUM_MATCHES):
     return nodes
 
 
+from llama_index.core.retrievers import AutoMergingRetriever, VectorIndexRetriever
+from llama_index.core.query_engine import RetrieverQueryEngine
+from llama_index.core.storage.docstore import SimpleDocumentStore
+
+
+def search_by_query_bookish(query, num_matches=Config.EMBEDDING_NUM_MATCHES):
+
+    # ladda en sparad docstore från disk
+    docstore_path = "./storage_docstore"
+    docstore = SimpleDocumentStore.from_persist_path(docstore_path)
+
+    configure_embedding_model()
+    vector_store = get_vector_store()
+
+    # Koppla ihop både din vektordatabas och din dokumentdatabas
+    storage_context = StorageContext.from_defaults(vector_store=vector_store, docstore=docstore)
+
+    # Skapa indexet med hela kontexten intakt
+    index = VectorStoreIndex.from_vector_store(vector_store, storage_context=storage_context)
+
+    # Skapa en explicit VectorIndexRetriever
+    base_retriever = VectorIndexRetriever(index=index, similarity_top_k=num_matches)
+
+    # Linda in den i en AutoMergingRetriever
+    retriever = AutoMergingRetriever(
+        base_retriever,
+        storage_context,
+        verbose=True,  # Visar i terminalen när den slår ihop bitar till en hel sektion
+    )
+
+    return retriever.retrieve(query)
+    # # Den gör exakt samma sökning som ovan, men tar sedan textblocken, stoppar in dem i en prompt (t.ex. "Svara på frågan baserat på följande kontext...")
+    # # och skickar allt till en LLM (som OpenAI eller Ollama).Resultat: Du får ett färdigt, genererat textsvar (ett Response-objekt) skrivet av en AI.
+    # # 3. Skapa din Query Engine som du ställer frågor till
+    # query_engine = RetrieverQueryEngine.from_args(retriever)
+    # # 4. Ställ en fråga till boken
+    # return query_engine.query(query)
+
+
 class WSLGPUMonitor(threading.Thread):
     def __init__(self, interval=0.05):
         super().__init__()
@@ -89,7 +128,13 @@ def main(query):
     # Force embeddings to CPU
     os.environ["OLLAMA_NUM_GPU"] = "0"
     start_time = time.perf_counter()
-    scored_nodes = search_by_query(query)
+
+    # gamla markdown-aktiga retrieval pipeline
+    # scored_nodes = search_by_query(query)
+
+    # nya bookish retrieval pipeline
+    scored_nodes = search_by_query_bookish(query)
+
     # reset to use GPU for reasoning model
     os.environ["OLLAMA_NUM_GPU"] = str(Config.OLLAMA_NUM_GPU)
 
@@ -187,14 +232,19 @@ if __name__ == "__main__":
         queries = [sys.argv[1]]
     else:
         queries = [
-            # 1a artikeln (vatten etc) - mellansvår
-            "Omfattar ICESCR rättigheter till vatten?",
-            # vattenartikeln - svår
-            "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water) och gäller detta även Aboriginer?",
-            # 1998 artikeln - lätt
-            """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
-            # thailand - svår
-            "Varför dödades de thailändska skogshuggarna?",
+            # # wiki
+            # # 1a artikeln (vatten etc) - mellansvår
+            # "Omfattar ICESCR rättigheter till vatten?",
+            # # vattenartikeln - svår
+            # "Vad gäller i Australisk lag kring rättighet till vatten i strand-zon(på engelska riparian water) och gäller detta även Aboriginer?",
+            # # 1998 artikeln - lätt
+            # """I "Human Rights Act 1998" så står det något om en mordbrännare(på engelska arsonist) som ansåg sig ha rätt att vara i klassrummet, vad gällde det?""",
+            # # thailand - svår
+            # "Varför dödades de thailändska skogshuggarna?",
+            # # doubt illusion
+            # "How does obsessional doubt work?",
+            # "Hur fungerar tvångsmässigt tvivel?",
+            "Do I have to invent techniques or rituals to stay free of OCD?",
         ]
     # --- 1. STARTA MÄTNINGAR ---
     gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund

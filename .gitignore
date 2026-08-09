@@ -17,3 +17,4 @@ prompt_debug.txt
 .coverage
 debug_out/
 resources/
+storage_docstore
