@@ -16,3 +16,4 @@ prompt_debug.txt
 **/prompt_debug*.txt
 .coverage
 debug_out/
+resources/
