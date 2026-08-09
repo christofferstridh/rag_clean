@@ -245,6 +245,8 @@ if __name__ == "__main__":
             # "How does obsessional doubt work?",
             # "Hur fungerar tvångsmässigt tvivel?",
             "Do I have to invent techniques or rituals to stay free of OCD?",
+            "What are some hints that I'm focusing on the illusion?",
+            "Is the dullness some sort of giveaway that I'm not focusing on the illusion?",
         ]
     # --- 1. STARTA MÄTNINGAR ---
     gpu_tracker = WSLGPUMonitor(interval=0.02)  # Mäter var 20:e millisekund
